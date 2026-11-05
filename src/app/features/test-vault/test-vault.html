@@ -1,0 +1,200 @@
+<div class="section-heading">
+  <div>
+    <h2>Cofre de testes</h2>
+    <p>Credenciais e informações de apoio aos testes deste projeto.</p>
+  </div>
+  @if (manageable()) {
+    <button
+      class="btn btn-primary"
+      type="button"
+      [disabled]="state.busy() || !!state.wait()"
+      (click)="edit()"
+    >
+      + Adicionar registro
+    </button>
+  }
+</div>
+@if (state.error() && !editing() && !deleting()) {
+  <p class="message error" role="alert">{{ state.error() }}</p>
+}
+@if (state.success()) {
+  <p class="message success" role="status">{{ state.success() }}</p>
+}
+@if (environmentState.error()) {
+  <p class="message error" role="alert">
+    {{ environmentState.error() }}
+    <button
+      class="btn"
+      type="button"
+      [disabled]="environmentState.busy() || !!environmentState.wait()"
+      (click)="loadEnvironments()"
+    >
+      Atualizar ambientes
+    </button>
+  </p>
+}
+<form class="list-toolbar" (ngSubmit)="search()">
+  <label class="sr-only" for="vault-query">Buscar nome no cofre</label
+  ><input
+    id="vault-query"
+    name="q"
+    [(ngModel)]="q"
+    maxlength="100"
+    placeholder="Buscar nome no cofre"
+  />
+  <label class="sr-only" for="vault-filter-environment">Filtrar ambiente</label
+  ><select id="vault-filter-environment" name="environment" [(ngModel)]="environmentId">
+    <option value="">Todos os ambientes</option>
+    @for (env of environments(); track env.id) {
+      <option [value]="env.id">{{ env.name }}</option>
+    }
+  </select>
+  <label class="sr-only" for="vault-sort">Ordenação</label
+  ><select id="vault-sort" name="sort" [(ngModel)]="sort">
+    <option value="name,asc">Nome A–Z</option>
+    <option value="createdAt,desc">Mais recentes</option>
+    <option value="updatedAt,desc">Atualizados recentemente</option>
+  </select>
+  <button class="btn" [disabled]="list.state.busy() || !!list.state.wait()">Buscar</button
+  ><button
+    class="btn"
+    type="button"
+    [disabled]="list.state.busy() || !!list.state.wait()"
+    (click)="hide(); list.load()"
+  >
+    Atualizar
+  </button>
+</form>
+@if (list.state.error()) {
+  <p class="message error" role="alert">{{ list.state.error() }}</p>
+}
+@if (list.state.busy()) {
+  <p role="status">Carregando cofre…</p>
+}
+@if (list.rows().length) {
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Ambiente</th>
+          <th>Criado em</th>
+          <th>Atualizado em</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (entry of list.rows(); track entry.id) {
+          <tr>
+            <td>
+              <strong>{{ entry.name }}</strong>
+            </td>
+            <td>{{ environment(entry) }}</td>
+            <td>{{ entry.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+            <td>{{ entry.updatedAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+            <td>
+              <div class="table-actions">
+                @if (can('testvault.reveal')) {
+                  <button
+                    class="btn"
+                    type="button"
+                    [disabled]="state.busy() || !!state.wait()"
+                    (click)="reveal(entry)"
+                  >
+                    Revelar
+                  </button>
+                }
+                @if (manageable()) {
+                  <button
+                    class="btn"
+                    type="button"
+                    [disabled]="state.busy() || !!state.wait()"
+                    (click)="edit(entry)"
+                  >
+                    Editar</button
+                  ><button
+                    class="btn"
+                    type="button"
+                    [disabled]="state.busy() || !!state.wait()"
+                    (click)="confirmDelete(entry)"
+                  >
+                    Excluir
+                  </button>
+                }
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+} @else if (!list.state.busy() && !list.state.error()) {
+  <p>Nenhum registro encontrado no cofre.</p>
+}
+<app-pagination
+  [pagination]="list.pagination()"
+  [busy]="list.state.busy() || !!list.state.wait()"
+  (change)="list.page($event)"
+/>
+@if (revealed(); as secret) {
+  <section class="vault-reveal" aria-labelledby="vault-reveal-title">
+    <div class="section-heading">
+      <h3 id="vault-reveal-title">{{ revealedName() }} · Dados revelados</h3>
+      <button class="btn" type="button" (click)="hide()">Ocultar credenciais</button>
+    </div>
+    <p class="field-hint">Os dados ficam apenas nesta tela enquanto abertos.</p>
+    <dl class="profile-details">
+      <dt>Usuário</dt>
+      <dd class="vault-secret">
+        {{ secret.username || '—' }}
+        <button class="case-suite-link" type="button" (click)="copy('username')">
+          Copiar usuário
+        </button>
+      </dd>
+      <dt>Senha</dt>
+      <dd class="vault-secret">
+        {{ secret.password || '—' }}
+        <button class="case-suite-link" type="button" (click)="copy('password')">
+          Copiar senha
+        </button>
+      </dd>
+      <dt>URL</dt>
+      <dd class="vault-secret">
+        {{ secret.url || '—' }}
+        @if (secret.url) {
+          <button class="case-suite-link" type="button" (click)="copy('url')">Copiar URL</button>
+        }
+      </dd>
+      <dt>Notas</dt>
+      <dd class="vault-secret">
+        {{ secret.notes || '—' }}
+        @if (secret.notes) {
+          <button class="case-suite-link" type="button" (click)="copy('notes')">
+            Copiar notas
+          </button>
+        }
+      </dd>
+    </dl>
+  </section>
+}
+@if (editing(); as draft) {
+  <app-vault-editor
+    [entry]="draft.entry"
+    [environments]="environments()"
+    [state]="state"
+    [uncertain]="uncertain()"
+    [canReveal]="can('testvault.reveal')"
+    (saved)="save($event)"
+    (closed)="close(); list.load()"
+    (revealRequested)="draft.entry && reveal(draft.entry, true)"
+  />
+}
+@if (deleting(); as entry) {
+  <app-confirm-dialog
+    title="Excluir registro do cofre"
+    [message]="'Excluir ' + entry.name + ' do cofre? Os dados deixarão de estar disponíveis.'"
+    [state]="state"
+    (confirmed)="remove()"
+    (closed)="close()"
+  />
+}

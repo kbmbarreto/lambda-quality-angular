@@ -1,0 +1,8 @@
+{
+  "tool": "image_gen.imagegen",
+  "mode": "built-in edit",
+  "source": "assets/logo_lambda_quality.png",
+  "output": "assets/logo_lambda_quality_transparent.png",
+  "transparent_background": true,
+  "prompt": "Use case: background-extraction. Edit target: the provided existing Lambda Quality logo PNG. Remove only the white/off-white background completely and make it truly transparent (including inside the circular symbol, between strokes, and inside letter counters). Preserve the complete original logo EXACTLY: the lambda symbol within the partial circle and checkmark at left, the text \"LambdaQuality\" with navy \"Lambda\" and blue \"Quality\", original typography, letter shapes, spacing, gradients, proportions, sharp edges and composition. No redesign, no extra elements, no shadow or glow, no border, no opaque background, no checkerboard painted into the image. Output one clean transparent PNG, wide 3:1 aspect ratio. Preserve identity and accurate spelling."
+}

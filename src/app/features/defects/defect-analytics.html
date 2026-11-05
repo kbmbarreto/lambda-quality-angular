@@ -1,0 +1,290 @@
+<section class="defect-analytics" aria-label="Indicadores de bugs">
+  <div class="section-heading">
+    <div>
+      <h2>Indicadores de bugs</h2>
+      <p>Histórico de criação e distribuição por projeto e ambiente.</p>
+    </div>
+    <a
+      class="btn button-link"
+      [routerLink]="
+        projectId
+          ? ['/workspaces', workspaceId(), 'projects', projectId, 'defects']
+          : ['/workspaces', workspaceId(), 'defects']
+      "
+      >Consultar defeitos</a
+    >
+  </div>
+  <form class="analytics-filters" (ngSubmit)="apply()">
+    <label
+      >Início do histórico<input
+        name="analytics-from"
+        type="date"
+        [(ngModel)]="from"
+        required
+        min="1000-01-01"
+        max="9999-12-31"
+    /></label>
+    <label
+      >Fim do histórico<input
+        name="analytics-to"
+        type="date"
+        [(ngModel)]="to"
+        required
+        min="1000-01-01"
+        max="9999-12-31"
+    /></label>
+    <label
+      >Projeto<select name="analytics-project" [(ngModel)]="projectId">
+        <option value="">Todos os projetos autorizados</option>
+        @for (p of projects(); track p.id) {
+          <option [value]="p.id">
+            {{ p.key }} · {{ p.name }}{{ p.status === 'ARCHIVED' ? ' (arquivado)' : '' }}
+          </option>
+        }
+        @if (projectId && !hasProject(projectId)) {
+          <option [value]="projectId">Projeto selecionado</option>
+        }
+      </select></label
+    >
+    <label
+      >Categoria<select name="analytics-category" [(ngModel)]="category">
+        <option value="">Todas as categorias</option>
+        @for (c of categories; track c.key) {
+          <option [value]="c.key">{{ c.label }}</option>
+        }
+      </select></label
+    >
+    <button class="btn" type="submit" [disabled]="!!state.wait()">
+      Aplicar filtros{{ state.wait() ? ' (' + state.wait() + 's)' : '' }}
+    </button>
+  </form>
+  @if (projectRead.error()) {
+    <p class="message error" role="alert">
+      {{ projectRead.error() }}
+      <button
+        class="btn"
+        type="button"
+        [disabled]="projectRead.busy() || !!projectRead.wait()"
+        (click)="loadProjects()"
+      >
+        Atualizar projetos
+      </button>
+    </p>
+  }
+  @if (validation()) {
+    <p class="message error" role="alert">{{ validation() }}</p>
+  }
+  @if (state.error()) {
+    <p class="message error" role="alert">{{ state.error() }}</p>
+    <button class="btn" type="button" [disabled]="!!state.wait() || state.busy()" (click)="retry()">
+      Tentar novamente{{ state.wait() ? ' (' + state.wait() + 's)' : '' }}
+    </button>
+  }
+  @if (state.busy()) {
+    <p role="status">Consultando indicadores…</p>
+  }
+  @if (history(); as data) {
+    <section class="analytics-chart-panel">
+      <h3>Histórico de bugs encontrados</h3>
+      <p class="dashboard-footnote">
+        {{ date(data.period.from) }} a {{ date(data.period.to) }} · Por data de criação ·
+        {{ data.period.timezone }}
+      </p>
+      <div class="analytics-legend">
+        @for (c of categories; track c.key) {
+          <span><i [style.background]="c.color" aria-hidden="true"></i>{{ c.label }}</span>
+        }
+      </div>
+      <div class="chart-scroll">
+        <svg
+          class="monthly-bugs-chart"
+          [attr.width]="chart().width"
+          [attr.height]="chart().height"
+          [attr.viewBox]="'0 0 ' + chart().width + ' ' + chart().height"
+          role="img"
+          aria-label="Histórico mensal de bugs por categoria de ambiente"
+        >
+          <title>Bugs criados em cada mês por Homologação, Produção, Outro e Sem ambiente</title>
+          @for (tick of chart().ticks; track tick) {
+            <line
+              x1="45"
+              [attr.x2]="chart().width - 10"
+              [attr.y1]="180 - (tick / chart().max) * 160"
+              [attr.y2]="180 - (tick / chart().max) * 160"
+              class="chart-grid-line"
+            />
+            <text x="38" [attr.y]="184 - (tick / chart().max) * 160" text-anchor="end">
+              {{ tick }}
+            </text>
+          }
+          @for (row of chart().monthly; track row.month) {
+            @for (bar of row.bars; track bar.key) {
+              <rect
+                [attr.x]="bar.x"
+                [attr.y]="180 - bar.height"
+                [attr.width]="bar.width"
+                [attr.height]="bar.height"
+                [attr.fill]="bar.color"
+              >
+                <title>{{ row.label }} · {{ bar.label }}: {{ bar.count }}</title>
+              </rect>
+              @if (bar.count) {
+                <text
+                  [attr.x]="bar.x + bar.width / 2"
+                  [attr.y]="174 - bar.height"
+                  text-anchor="middle"
+                >
+                  {{ bar.count }}
+                </text>
+              }
+            }
+            <text [attr.x]="row.x + row.bars[0].width * 2" y="202" text-anchor="middle">
+              {{ row.label }}
+            </text>
+          }
+          <text [attr.x]="chart().width / 2" y="232" text-anchor="middle">
+            Mês / ano de criação
+          </text>
+          <text transform="translate(12 102) rotate(-90)" text-anchor="middle">Total de bugs</text>
+        </svg>
+      </div>
+    </section>
+    <div class="section-heading">
+      <h3>Bugs do mês de {{ monthLabel(month) }}</h3>
+      <label
+        >Mês<select
+          name="analytics-month"
+          [ngModel]="month"
+          [disabled]="!!state.wait()"
+          (ngModelChange)="selectMonth($event)"
+        >
+          @for (row of data.monthly; track row.month) {
+            <option [value]="row.month">{{ monthLabel(row.month) }}</option>
+          }
+        </select></label
+      >
+    </div>
+  }
+  @if (monthData(); as data) {
+    <div class="bug-metric-grid">
+      @for (card of cards(); track card.label) {
+        <article class="bug-metric">
+          <strong>{{ card.value }}</strong
+          ><span>{{ card.label }}</span>
+        </article>
+      }
+    </div>
+    <p class="dashboard-footnote">
+      Criados de {{ date(data.period.from) }} a {{ date(data.period.to) }} · Situação atual, sem
+      reconstrução de transições históricas.
+    </p>
+    <div class="bug-chart-grid">
+      <section class="analytics-chart-panel">
+        <h3>Total de bugs por projeto</h3>
+        <ul class="horizontal-bug-bars">
+          @for (p of projectRows(); track p.projectId) {
+            <li>
+              <a
+                [routerLink]="['/workspaces', workspaceId(), 'projects', p.projectId, 'defects']"
+                >{{ p.label }}</a
+              >
+              <div class="bug-bar-track">
+                <span [style.width.%]="barWidth(p.count, projectRows())"></span>
+              </div>
+              <strong>{{ p.count }}</strong>
+            </li>
+          } @empty {
+            <li>Nenhum projeto autorizado neste escopo.</li>
+          }
+        </ul>
+      </section>
+      <section class="analytics-chart-panel">
+        <h3>Total de bugs por ambiente</h3>
+        <ul class="horizontal-bug-bars">
+          @for (c of categoryRows(); track c.label) {
+            <li>
+              <span>{{ c.label }}</span>
+              <div class="bug-bar-track">
+                <span
+                  [style.width.%]="barWidth(c.count, categoryRows())"
+                  [style.background]="c.color"
+                ></span>
+              </div>
+              <strong>{{ c.count }}</strong>
+            </li>
+          }
+        </ul>
+      </section>
+      <section class="analytics-chart-panel">
+        <h3>Homologação por projeto</h3>
+        <ul class="horizontal-bug-bars">
+          @for (p of projectRows('HOMOLOGATION'); track p.projectId) {
+            <li>
+              <a
+                [routerLink]="['/workspaces', workspaceId(), 'projects', p.projectId, 'defects']"
+                >{{ p.label }}</a
+              >
+              <div class="bug-bar-track">
+                <span [style.width.%]="barWidth(p.count, projectRows('HOMOLOGATION'))"></span>
+              </div>
+              <strong>{{ p.count }}</strong>
+            </li>
+          } @empty {
+            <li>Nenhum projeto autorizado neste escopo.</li>
+          }
+        </ul>
+      </section>
+      <section class="analytics-chart-panel">
+        <h3>Produção por projeto</h3>
+        <ul class="horizontal-bug-bars production-bars">
+          @for (p of projectRows('PRODUCTION'); track p.projectId) {
+            <li>
+              <a
+                [routerLink]="['/workspaces', workspaceId(), 'projects', p.projectId, 'defects']"
+                >{{ p.label }}</a
+              >
+              <div class="bug-bar-track">
+                <span [style.width.%]="barWidth(p.count, projectRows('PRODUCTION'))"></span>
+              </div>
+              <strong>{{ p.count }}</strong>
+            </li>
+          } @empty {
+            <li>Nenhum projeto autorizado neste escopo.</li>
+          }
+        </ul>
+      </section>
+    </div>
+    <details>
+      <summary>Ambientes históricos</summary>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Projeto</th>
+              <th>Ambiente preservado</th>
+              <th>Categoria</th>
+              <th>Bugs</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (env of data.byEnvironment; track $index) {
+              <tr>
+                <td>{{ projectName(env.projectId) }}</td>
+                <td>{{ env.name || 'Sem ambiente' }}</td>
+                <td>{{ categoryLabel(env.category) }}</td>
+                <td>{{ env.totalBugs }}</td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="4">Nenhum defeito no período selecionado.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </details>
+    <p class="dashboard-footnote">
+      Atualizado em {{ data.generatedAt | date: 'dd/MM/yyyy HH:mm' }} (São Paulo)
+    </p>
+  }
+</section>

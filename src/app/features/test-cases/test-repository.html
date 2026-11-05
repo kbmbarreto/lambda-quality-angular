@@ -1,0 +1,408 @@
+@if (suiteState.error()) {
+  <p class="message error" role="alert">
+    {{ suiteState.error() }}
+    <button
+      class="btn"
+      type="button"
+      [disabled]="suiteState.busy() || !!suiteState.wait()"
+      (click)="loadSuites()"
+    >
+      {{ suiteState.wait() ? 'Aguarde ' + suiteState.wait() + 's' : 'Consultar suítes novamente' }}
+    </button>
+  </p>
+}
+@if (catalogState.error()) {
+  <p class="message error" role="alert">
+    {{ catalogState.error() }}
+    <button
+      class="btn"
+      type="button"
+      [disabled]="catalogState.busy() || !!catalogState.wait()"
+      (click)="loadCatalogs()"
+    >
+      {{
+        catalogState.wait()
+          ? 'Aguarde ' + catalogState.wait() + 's'
+          : 'Consultar catálogos novamente'
+      }}
+    </button>
+  </p>
+}
+@if (suiteState.busy() || catalogState.busy()) {
+  <p role="status">Carregando suítes e catálogos…</p>
+}
+@if (state.error() && !creating()) {
+  <p class="message error" role="alert">
+    {{ state.error() }}
+    @if (state.wait()) {
+      Aguarde {{ state.wait() }}s.
+    }
+  </p>
+}
+@if (importResult(); as result) {
+  <p class="message success" role="status">
+    {{ result.alreadyImported ? 'Este arquivo já foi importado.' : 'Importação concluída.' }}
+    {{ result.importedCount }} caso(s) · Rascunhos, sem suíte.
+    <button class="case-suite-link" type="button" (click)="showImported()">
+      Ver casos importados
+    </button>
+  </p>
+}
+<div class="repository-heading">
+  <div>
+    <h2>Repositório de testes</h2>
+    <p>{{ summary()?.totalCases ?? '—' }} casos · {{ suites().length }} suítes</p>
+  </div>
+  @if (project().status === 'ACTIVE' && project().permissions.includes('testcase.create')) {
+    <button
+      class="btn"
+      type="button"
+      [disabled]="state.busy() || quickState.busy() || creating()"
+      (click)="importing.set(true)"
+    >
+      Importar CSV do Azure DevOps
+    </button>
+  }
+  <button
+    class="btn"
+    type="button"
+    [disabled]="quickState.busy()"
+    (click)="managingSuites.set(!managingSuites()); selected.set(null)"
+  >
+    {{ managingSuites() ? 'Voltar aos casos' : 'Gerenciar suítes' }}
+  </button>
+</div>
+@if (summaryState.error()) {
+  <p class="message error" role="alert">
+    {{ summaryState.error() }}
+    <button
+      class="btn"
+      type="button"
+      [disabled]="summaryState.busy() || !!summaryState.wait()"
+      (click)="loadSummary()"
+    >
+      {{ summaryState.wait() ? 'Aguarde ' + summaryState.wait() + 's' : 'Atualizar contagens' }}
+    </button>
+  </p>
+}
+<div class="test-repository-layout">
+  <app-suite-tree
+    [suites]="suites()"
+    [summary]="summary()"
+    [selectedId]="suiteSelection()"
+    [busy]="suiteState.busy()"
+    [canCreate]="can('testcase.create') && !selected()"
+    [disabled]="!ready() || quickState.busy()"
+    [selectionDisabled]="quickState.busy() || !!list.state.wait() || creating()"
+    (selected)="filterSuite($event)"
+    (create)="createSuite()"
+  />
+  <section class="repository-content" aria-label="Conteúdo da suíte">
+    @if (managingSuites()) {
+      @if (ready()) {
+        <app-suite-panel
+          [project]="project()"
+          [suites]="suites()"
+          [loading]="suiteState.busy()"
+          (changed)="suitesChanged()"
+          (refresh)="loadSuites()"
+          (selected)="filterSuite($event)"
+        />
+      }
+    } @else if (selected(); as current) {
+      <app-case-detail
+        [initial]="current"
+        [startWithMove]="moveOnOpen()"
+        [project]="project()"
+        [suites]="suites()"
+        [definitions]="definitions()"
+        [tags]="tags()"
+        [attachments]="attachments()"
+        [resourcesReady]="ready()"
+        (changed)="changed()"
+        (closed)="selected.set(null)"
+      />
+    } @else {
+      <div class="repository-suite-heading">
+        <div>
+          <div class="eyebrow">{{ currentSuite() ? 'Suíte de teste' : 'Casos de teste' }}</div>
+          <h2>{{ heading() }}</h2>
+          @if (currentSuite(); as suite) {
+            <p class="suite-path">{{ suiteName(suite) }}</p>
+            <p>
+              {{ count(suite.id) }} casos nesta suíte · {{ branchCount(suite.id) }} incluindo
+              subsuítes
+            </p>
+            @if (suite.description) {
+              <p>{{ suite.description }}</p>
+            }
+            @if (suite.archivedAt) {
+              <p class="message info">
+                Suíte arquivada. Os casos permanecem disponíveis para consulta.
+              </p>
+            }
+          } @else {
+            <p>{{ suiteFilter === 'root' ? count(null) : (summary()?.totalCases ?? '—') }} casos</p>
+          }
+        </div>
+        @if (ready()) {
+          <app-suite-panel
+            [compact]="true"
+            [project]="project()"
+            [suites]="suites()"
+            [parentSuiteId]="currentSuite()?.archivedAt ? null : (currentSuite()?.id ?? null)"
+            [selectedSuiteId]="suiteFilter"
+            [loading]="suiteState.busy() || quickState.busy()"
+            (changed)="suitesChanged()"
+            (refresh)="loadSuites()"
+            (selected)="filterSuite($event)"
+          />
+        }
+      </div>
+      @if (childSuites().length) {
+        <div class="repository-child-suites" aria-label="Subsuítes">
+          @for (suite of childSuites(); track suite.id) {
+            <button
+              class="btn"
+              type="button"
+              [disabled]="quickState.busy() || !!list.state.wait()"
+              (click)="filterSuite(suite.id)"
+            >
+              {{ suite.name }} <span class="suite-count">{{ branchCount(suite.id) }}</span>
+            </button>
+          }
+        </div>
+      }
+      <app-list-tools
+        label="casos de teste"
+        emptyStatusLabel="Não arquivados"
+        [statuses]="statuses"
+        [sorts]="sorts"
+        [busy]="list.state.busy() || !!list.state.wait() || quickState.busy()"
+        (search)="search($event)"
+        (refresh)="refreshRepository()"
+      />
+      <details class="repository-filters">
+        <summary>Filtros avançados</summary>
+        <div class="case-filters">
+          <div class="field">
+            <label for="filter-priority">Prioridade</label
+            ><select id="filter-priority" [(ngModel)]="priorityFilter">
+              <option value="">Todas</option>
+              @for (option of priorities; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+          </div>
+          <div class="field">
+            <label for="filter-automation">Automação</label
+            ><select id="filter-automation" [(ngModel)]="automationFilter">
+              <option value="">Todas</option>
+              @for (option of automationOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+          </div>
+          @if (workspace.can('tag.read')) {
+            <div class="field">
+              <label for="filter-tag">Tag</label
+              ><select id="filter-tag" [(ngModel)]="tagFilter">
+                <option value="">Todas</option>
+                @for (tag of tags(); track tag.id) {
+                  <option [value]="tag.id">{{ tag.name }}</option>
+                }
+              </select>
+            </div>
+          } @else {
+            <div class="field">
+              <label for="filter-tag">ID da tag (opcional)</label
+              ><input id="filter-tag" [(ngModel)]="tagFilter" maxlength="36" />
+            </div>
+          }
+        </div>
+        <button
+          class="btn"
+          type="button"
+          [disabled]="list.state.busy() || !!list.state.wait()"
+          (click)="search(list.query)"
+        >
+          Aplicar filtros
+        </button>
+      </details>
+      @if (list.state.error()) {
+        <p class="message error" role="alert">
+          {{ list.state.error() }}
+          @if (list.state.wait()) {
+            Aguarde {{ list.state.wait() }}s.
+          }
+        </p>
+      }
+      @if (list.state.busy()) {
+        <p role="status">Carregando casos de teste…</p>
+      }
+      @if (list.rows().length) {
+        <div class="table-scroll">
+          <table class="data-table repository-case-table">
+            <thead>
+              <tr>
+                <th>Caso de teste</th>
+                <th>Situação</th>
+                <th>Prioridade</th>
+                <th>Suíte</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of list.rows(); track item.id) {
+                <tr>
+                  <td>
+                    <button
+                      class="case-title-link"
+                      type="button"
+                      [disabled]="state.busy() || !!state.wait() || quickState.busy()"
+                      (click)="open(item)"
+                    >
+                      <span class="case-human-id">{{ item.humanId }}</span
+                      ><span>{{ item.title }}</span>
+                    </button>
+                  </td>
+                  <td>
+                    <span class="case-status-badge" [class.archived]="item.status === 'ARCHIVED'">{{
+                      item.status === 'ARCHIVED' ? 'Arquivado' : labels.status[item.status]
+                    }}</span>
+                  </td>
+                  <td>{{ labels.priority[item.priority] }}</td>
+                  <td>
+                    @if (can('testcase.update') && item.status !== 'ARCHIVED') {
+                      <button
+                        class="case-suite-link"
+                        type="button"
+                        [disabled]="state.busy() || !!state.wait() || quickState.busy()"
+                        [attr.aria-label]="'Alterar suíte de ' + item.humanId"
+                        (click)="open(item, true)"
+                      >
+                        {{ item.suiteId ? 'Alterar suíte' : 'Associar à suíte' }}
+                      </button>
+                    } @else {
+                      <span>{{ item.suiteId ? 'Associado' : 'Sem suíte' }}</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else if (!list.state.busy() && !list.state.error()) {
+        <div class="repository-empty">
+          <strong>{{
+            childSuites().length
+              ? 'Explore as subsuítes ou adicione um caso aqui.'
+              : 'Nenhum caso encontrado.'
+          }}</strong>
+          <p>
+            {{
+              currentSuite()
+                ? 'Os novos casos serão associados a esta suíte.'
+                : 'Selecione uma suíte para criar casos dentro dela.'
+            }}
+          </p>
+        </div>
+      }
+      <app-pagination
+        [pagination]="list.pagination()"
+        [busy]="list.state.busy() || !!list.state.wait() || quickState.busy()"
+        (change)="list.page($event)"
+      />
+      @if (canCreateHere()) {
+        <div class="repository-quick-create">
+          @if (quickAvailable()) {
+            <form class="quick-case-form" (ngSubmit)="addQuickCase()">
+              <label for="quick-case-title"
+                >Adicionar caso
+                {{ currentSuite() ? 'em ' + currentSuite()!.name : 'sem suíte' }}</label
+              >
+              <div>
+                <input
+                  id="quick-case-title"
+                  [formControl]="quickTitle"
+                  maxlength="250"
+                  placeholder="Título do caso de teste"
+                  [readOnly]="quickState.busy()"
+                /><button
+                  class="btn btn-primary"
+                  type="submit"
+                  [disabled]="quickState.busy() || !!quickState.wait()"
+                >
+                  {{ quickState.busy() ? 'Salvando…' : '+ Adicionar caso' }}
+                </button>
+              </div>
+              @if (quickTitle.touched && quickTitle.invalid) {
+                <span class="field-error" role="alert"
+                  >Informe um título entre 1 e 250 caracteres.</span
+                >
+              }
+            </form>
+            <button
+              class="case-suite-link"
+              type="button"
+              [disabled]="quickState.busy() || !!quickState.wait()"
+              (click)="create()"
+            >
+              Formulário completo: passos e mais detalhes
+            </button>
+          } @else {
+            <button
+              class="btn btn-primary"
+              type="button"
+              [disabled]="state.busy() || !!state.wait() || quickState.busy()"
+              (click)="create()"
+            >
+              + Adicionar caso {{ currentSuite() ? 'nesta suíte' : 'sem suíte' }}
+            </button>
+          }
+          @if (quickState.error()) {
+            <p class="message error" role="alert">
+              {{ quickState.error() }}
+              @if (quickState.wait()) {
+                Aguarde {{ quickState.wait() }}s.
+              }
+            </p>
+          }
+          @if (quickState.success() && createdCase(); as item) {
+            <p class="message success" role="status">
+              {{ quickState.success() }}
+              <button
+                class="case-suite-link"
+                type="button"
+                (click)="open(item)"
+                [disabled]="state.busy() || quickState.busy()"
+              >
+                Abrir caso
+              </button>
+            </p>
+          }
+        </div>
+      }
+    }
+  </section>
+</div>
+@if (creating()) {
+  <app-case-editor
+    mode="create"
+    [suites]="suites()"
+    [definitions]="activeDefinitions()"
+    [fieldsAvailable]="workspace.can('field.read')"
+    [suiteId]="currentSuite()?.id ?? null"
+    [initialTitle]="quickTitle.value"
+    [state]="state"
+    (saved)="save($event)"
+    (closed)="creating.set(false)"
+  />
+}
+
+@if (importing()) {
+  <app-azure-import
+    [project]="project()"
+    (imported)="imported($event)"
+    (closed)="importing.set(false)"
+  />
+}

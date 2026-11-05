@@ -1,0 +1,281 @@
+@if (navigationError()) {
+  <p class="message error" role="alert">{{ navigationError() }}</p>
+  <button class="btn" type="button" (click)="resetNavigation()">Abrir lista de defeitos</button>
+} @else {
+  @if (selected(); as current) {
+    @for (item of [current]; track item.id) {
+      <app-defect-detail
+        [project]="project()"
+        [initial]="item"
+        (changed)="changed()"
+        (closed)="close()"
+      />
+    }
+  }
+  <section [hidden]="!!selected()" aria-label="Defeitos do projeto">
+    <div class="section-heading">
+      <div>
+        <h2>Defeitos do projeto</h2>
+        <p>Registre problemas, acompanhe a situação e relacione evidências e issues externas.</p>
+      </div>
+      @if (canManage()) {
+        <button
+          class="btn"
+          type="button"
+          [disabled]="state.busy() || createState.busy()"
+          (click)="create()"
+        >
+          Criar defeito avulso
+        </button>
+      }
+    </div>
+    @if (navigation().runCaseId) {
+      <section class="detail-card" aria-label="Falha de origem">
+        <div class="section-heading">
+          <h3>Origem na execução</h3>
+          @if (canReadRuns()) {
+            <button
+              class="btn"
+              type="button"
+              [disabled]="originState.busy() || !!originState.wait() || createState.busy()"
+              (click)="loadOrigin()"
+            >
+              Consultar origem
+            </button>
+          }
+        </div>
+        @if (!canReadRuns()) {
+          <p class="message info">
+            Consultar a origem e criar a partir de uma falha exige permissão de leitura das
+            execuções.
+          </p>
+        }
+        @if (originState.error()) {
+          <p class="message error" role="alert">
+            {{ originState.error() }}
+            @if (originState.wait()) {
+              Aguarde {{ originState.wait() }}s.
+            }
+          </p>
+        }
+        @if (originState.busy()) {
+          <p role="status">Consultando execução e caso de origem…</p>
+        }
+        @if (origin(); as source) {
+          <p>
+            <strong>{{ source.run.name }}</strong> · {{ runLabels[source.run.status] }}
+          </p>
+          <p>{{ source.item.humanIdSnapshot }} · {{ source.item.titleSnapshot }}</p>
+          @if (source.item.result === 'FAILED') {
+            @if (canUseOrigin()) {
+              <button
+                class="btn"
+                type="button"
+                [disabled]="createState.busy()"
+                (click)="create(true)"
+              >
+                Criar defeito desta falha
+              </button>
+            }
+          } @else {
+            <p class="message info">
+              O resultado atual deste caso não é Falhou. A criação a partir desta origem está
+              bloqueada.
+            </p>
+          }
+          @if (canReadRuns()) {
+            <a
+              class="btn button-link"
+              [routerLink]="[
+                '/workspaces',
+                project().workspaceId,
+                'projects',
+                project().id,
+                'execution',
+              ]"
+              [queryParams]="{ runId: source.run.id, runCaseId: source.item.id }"
+              >Abrir execução de origem</a
+            >
+          }
+          <details>
+            <summary>Consultar caso e passos da origem</summary>
+            <app-run-snapshot [item]="source.item" />
+          </details>
+        }
+      </section>
+    }
+    @if (sourceFilter()) {
+      <p class="message info">
+        Filtrando pela origem: {{ sourceFilter() }}
+        <button
+          class="btn"
+          type="button"
+          [disabled]="list.state.busy() || !!list.state.wait()"
+          (click)="clearFilter()"
+        >
+          Mostrar todas as origens
+        </button>
+      </p>
+    }
+    @if (state.error()) {
+      <p class="message error" role="alert">
+        {{ state.error() }}
+        @if (state.wait()) {
+          Aguarde {{ state.wait() }}s.
+        }
+      </p>
+    }
+    @if (state.busy()) {
+      <p role="status">Carregando defeito…</p>
+    }
+    <div class="case-filters">
+      <label
+        >Ambiente<select name="defect-environment" [(ngModel)]="environmentFilter">
+          <option value="">Todos os ambientes</option>
+          @for (env of environments(); track env.id) {
+            <option [value]="env.id">
+              {{ env.name }} · {{ categories[env.category ?? 'OTHER']
+              }}{{ env.active ? '' : ' (inativo)' }}
+            </option>
+          }
+        </select></label
+      >
+      <label
+        >Severidade
+        <select [(ngModel)]="severityFilter" name="severity" [disabled]="list.state.busy()">
+          <option value="">Todas as severidades</option>
+          @for (option of severities; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select></label
+      >
+    </div>
+    @if (environmentRead.error()) {
+      <p class="message error" role="alert">
+        {{ environmentRead.error() }}
+        <button
+          class="btn"
+          type="button"
+          [disabled]="!!environmentRead.wait() || environmentRead.busy()"
+          (click)="loadEnvironments()"
+        >
+          Atualizar ambientes
+        </button>
+      </p>
+    }
+    <app-list-tools
+      label="defeitos"
+      [statuses]="statuses"
+      [sorts]="sorts"
+      [busy]="list.state.busy() || !!list.state.wait()"
+      (search)="search($event)"
+      (refresh)="list.load()"
+    />
+    @if (list.state.error()) {
+      <p class="message error" role="alert">
+        {{ list.state.error() }}
+        @if (list.state.wait()) {
+          Aguarde {{ list.state.wait() }}s.
+        }
+      </p>
+    }
+    @if (list.state.busy()) {
+      <p role="status">Carregando defeitos…</p>
+    }
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Identificador / Título</th>
+            <th>Situação</th>
+            <th>Severidade</th>
+            <th>Origem</th>
+            <th>Ambiente</th>
+            <th>Atualizado em</th>
+            <th>Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of list.rows(); track item.id) {
+            <tr>
+              <td>
+                <strong>{{ item.humanId }}</strong>
+                <p class="preserve-text">{{ item.title }}</p>
+              </td>
+              <td>{{ statusLabels[item.status] }}</td>
+              <td>{{ severityLabels[item.severity] }}</td>
+              <td>{{ item.testRunCaseId ? 'Falha de execução' : 'Avulso' }}</td>
+              <td>
+                {{ item.environmentSnapshot?.name || 'Sem ambiente'
+                }}<small class="control-section-path">{{
+                  item.environmentSnapshot
+                    ? categories[item.environmentSnapshot.category]
+                    : 'Sem classificação de ambiente'
+                }}</small>
+              </td>
+              <td>{{ item.updatedAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+              <td>
+                <button
+                  class="btn"
+                  type="button"
+                  [disabled]="state.busy() || !!state.wait()"
+                  (click)="open(item)"
+                >
+                  Abrir defeito
+                </button>
+              </td>
+            </tr>
+          } @empty {
+            @if (!list.state.busy() && !list.state.error()) {
+              <tr>
+                <td colspan="7">Nenhum defeito encontrado para estes filtros.</td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+    <app-pagination
+      [pagination]="list.pagination()"
+      [busy]="list.state.busy() || !!list.state.wait()"
+      (change)="list.page($event)"
+    />
+  </section>
+}
+@if (creating(); as editor) {
+  <app-defect-editor
+    [project]="project()"
+    [failure]="editor.failure"
+    [state]="createState"
+    [blocked]="createState.blocked() || !canManage() || (!!editor.failure && !canUseOrigin())"
+    (saved)="save($event)"
+    (closed)="closeCreation()"
+  >
+    @if (editor.failure) {
+      <button
+        class="btn"
+        type="button"
+        [disabled]="originState.busy() || !!originState.wait() || createState.busy()"
+        (click)="loadOrigin()"
+      >
+        Consultar origem novamente
+      </button>
+      @if (originState.error()) {
+        <p class="message error" role="alert">{{ originState.error() }}</p>
+      }
+      @if (origin(); as source) {
+        @if (source.item.result !== 'FAILED') {
+          <p class="message info">
+            O caso já não está com resultado Falhou. A criação está bloqueada.
+          </p>
+        }
+      }
+    }
+    @if (createState.blocked()) {
+      <p class="message info">
+        Não foi possível confirmar a criação. Feche o formulário e consulte a lista antes de criar
+        novamente; uma mesma falha pode ter vários defeitos.
+      </p>
+    }
+  </app-defect-editor>
+}

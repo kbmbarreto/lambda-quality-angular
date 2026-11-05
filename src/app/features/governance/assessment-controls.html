@@ -1,0 +1,159 @@
+<section aria-label="Acompanhamento dos controles">
+  @if (session().ready() || session().view().assessed.length) {
+    <div class="test-repository-layout">
+      <app-section-tree
+        [sections]="sections()"
+        [controls]="controls()"
+        [progress]="session().view().progress ?? null"
+        [selectedId]="sectionId()"
+        [disabled]="session().locked()"
+        (selected)="chooseSection($event)"
+      />
+      <div class="repository-content">
+        <div class="section-heading">
+          <h3>{{ sectionName() }}</h3>
+          @if (sectionId() && session().manageable()) {
+            <button class="btn" type="button" (click)="goal.emit(sectionId())">
+              Criar meta desta seção
+            </button>
+          }
+        </div>
+        <app-progress-summary [summary]="summary()" />
+        <p class="dashboard-footnote">
+          Hierarquia e pesos preservados na avaliação. Itens parciais contribuem para o índice e
+          continuam pendentes.
+        </p>
+        <div class="case-filters">
+          <label
+            >Buscar controle<input
+              name="assessed-search"
+              [ngModel]="search()"
+              (ngModelChange)="search.set($event); page.set(1)"
+              placeholder="Código ou título"
+          /></label>
+          <label
+            >Situação<select
+              name="control-status"
+              [(ngModel)]="statusFilter"
+              (ngModelChange)="page.set(1)"
+            >
+              <option value="">Todas</option>
+              @for (c of choices; track c.value) {
+                <option [value]="c.value">{{ c.label }}</option>
+              }
+            </select></label
+          >
+        </div>
+        <div class="table-scroll">
+          <table class="data-table assessment-table">
+            <thead>
+              <tr>
+                <th scope="col">Controle</th>
+                <th scope="col">Atendimento</th>
+                <th scope="col">Peso</th>
+                <th scope="col">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of visible(); track c.id) {
+                <tr>
+                  <td>
+                    <strong>{{ c.controlSnapshot.code }}</strong> {{ c.controlSnapshot.title }}
+                    <small class="control-section-path">
+                      @for (part of c.controlSnapshot.sectionPath; track part.id) {
+                        {{ part.name }} /
+                      }
+                    </small>
+                    <details>
+                      <summary>Detalhes</summary>
+                      <p class="preserve-text">
+                        {{ c.controlSnapshot.description || 'Sem descrição' }}
+                      </p>
+                      <p class="preserve-text">{{ c.justification || 'Sem justificativa' }}</p>
+                      <small
+                        >Avaliado em {{ (c.assessedAt | date: 'dd/MM/yyyy HH:mm') || '—' }} ·
+                        {{ c.assessedBy || 'Sem classificação' }}</small
+                      >
+                    </details>
+                  </td>
+                  <td>
+                    <span class="case-badge" [class.compliance-met]="c.status === 'MET'">{{
+                      statuses[c.status]
+                    }}</span
+                    ><small class="control-section-path">{{
+                      c.score == null ? '—' : c.score + '%'
+                    }}</small>
+                  </td>
+                  <td>{{ c.controlSnapshot.weight }}</td>
+                  <td>
+                    <div class="table-actions">
+                      @if (session().assessable()) {
+                        @if (c.status !== 'MET') {
+                          <button
+                            class="btn"
+                            type="button"
+                            (click)="markMet(c)"
+                            [attr.aria-label]="
+                              'Marcar ' + c.controlSnapshot.code + ' como atendido'
+                            "
+                          >
+                            ✓ Atendido
+                          </button>
+                        }
+                        <button class="btn" type="button" (click)="edit(c)">Classificar</button>
+                      }
+                      <button
+                        class="btn"
+                        type="button"
+                        [disabled]="session().locked()"
+                        (click)="selectedId.set(c.id)"
+                      >
+                        Evidências
+                      </button>
+                      @if (session().manageable()) {
+                        <button class="btn" type="button" (click)="action.emit(c.id)">
+                          Criar ação de melhoria
+                        </button>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="4">Nenhum controle encontrado nesta seleção.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <app-pagination
+          [pagination]="pagination()"
+          [busy]="session().locked()"
+          (change)="page.set($event)"
+        />
+      </div>
+    </div>
+  }
+  @if (selected(); as c) {
+    @for (row of [c]; track row.id) {
+      <app-governance-evidence
+        [session]="session()"
+        [control]="row"
+        (closed)="selectedId.set('')"
+      />
+    }
+  }
+</section>
+@if (editor(); as e) {
+  <app-form-dialog
+    title="Classificar controle"
+    [fields]="e.fields"
+    [state]="session().state"
+    [blocked]="!session().assessable()"
+    [wide]="true"
+    hint="Não avaliado limpa a classificação. Não aplicável exige justificativa e exclui o peso do índice interno."
+    (saved)="save($event)"
+    (closed)="editor.set(null)"
+    ><app-governance-conflict [session]="session()"
+  /></app-form-dialog>
+}

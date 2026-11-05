@@ -1,0 +1,236 @@
+@if (plan(); as selected) {
+  @for (item of [selected]; track item.id) {
+    <app-plan-detail
+      [project]="project()"
+      [initial]="item"
+      (closed)="closePlan()"
+      (changed)="plans.load()"
+      (openRun)="openRun($event)"
+      (showRuns)="filterRuns($event)"
+    />
+  }
+} @else if (run(); as selected) {
+  @for (item of [selected]; track item.id) {
+    <app-run-detail
+      [project]="project()"
+      [initial]="item"
+      [entryCaseId]="item.id === entryRunId() ? entryCaseId() : ''"
+      (closed)="closeRun()"
+      (changed)="runs.load()"
+    />
+  }
+} @else {
+  <nav class="workspace-tabs" aria-label="Planos e execuções">
+    <button
+      [class.active]="tab() === 'plans'"
+      [attr.aria-current]="tab() === 'plans' ? 'page' : null"
+      (click)="switchTab('plans')"
+    >
+      Planos</button
+    ><button
+      [class.active]="tab() === 'runs'"
+      [attr.aria-current]="tab() === 'runs' ? 'page' : null"
+      (click)="switchTab('runs')"
+    >
+      Execuções
+    </button>
+  </nav>
+  @if (state.error()) {
+    <p class="message error" role="alert">
+      {{ state.error() }}
+      @if (state.wait()) {
+        Aguarde {{ state.wait() }}s.
+      }
+    </p>
+  }
+  @if (state.busy()) {
+    <p role="status">Carregando detalhes…</p>
+  }
+  @if (tab() === 'plans') {
+    <div class="section-heading">
+      <div>
+        <h2>Planos de teste</h2>
+        <p>Organize os casos, defina o contexto e crie execuções a partir de um plano ativo.</p>
+      </div>
+      @if (can()) {
+        <button class="btn" [disabled]="state.busy()" (click)="create('plan')">Criar plano</button>
+      }
+    </div>
+    <app-list-tools
+      label="planos"
+      [statuses]="planStatuses"
+      emptyStatusLabel="Não arquivados (padrão)"
+      [sorts]="planSorts"
+      [busy]="plans.state.busy() || !!plans.state.wait()"
+      (search)="plans.search($event)"
+      (refresh)="plans.load()"
+    />
+    @if (plans.state.error()) {
+      <p class="message error" role="alert">
+        {{ plans.state.error() }}
+        @if (plans.state.wait()) {
+          Aguarde {{ plans.state.wait() }}s.
+        }
+      </p>
+    }
+    @if (plans.state.busy()) {
+      <p role="status">Carregando planos…</p>
+    }
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Plano</th>
+            <th>Situação</th>
+            <th>Casos</th>
+            <th>Criado em</th>
+            <th>Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of plans.rows(); track item.id) {
+            <tr>
+              <td>
+                <strong>{{ item.name }}</strong>
+                <p class="preserve-text">
+                  {{ item.description?.slice(0, 140)
+                  }}{{ item.description && item.description.length > 140 ? '…' : '' }}
+                </p>
+              </td>
+              <td>{{ planLabels[item.status] }}</td>
+              <td>{{ item.cases.length }}</td>
+              <td>{{ item.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+              <td>
+                <button
+                  class="btn"
+                  [disabled]="state.busy() || !!state.wait()"
+                  (click)="openPlan(item)"
+                >
+                  Abrir plano
+                </button>
+              </td>
+            </tr>
+          } @empty {
+            @if (!plans.state.busy() && !plans.state.error()) {
+              <tr>
+                <td colspan="5">
+                  Nenhum plano encontrado. Crie um plano vazio e adicione os casos em seguida.
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+    <app-pagination
+      [pagination]="plans.pagination()"
+      [busy]="plans.state.busy() || !!plans.state.wait()"
+      (change)="plans.page($event)"
+    />
+  } @else {
+    <div class="section-heading">
+      <div>
+        <h2>Execuções de teste</h2>
+        <p>Acompanhe resultados, passos e histórico de cada execução.</p>
+      </div>
+      @if (can() && can('testcase.read')) {
+        <button class="btn" [disabled]="state.busy()" (click)="create('run')">
+          Criar execução avulsa
+        </button>
+      }
+    </div>
+    @if (planFilter(); as filter) {
+      <p class="message info">
+        Execuções do plano: {{ filter.name }}
+        <button class="btn" (click)="clearFilter()">Mostrar todos os planos</button>
+      </p>
+    }
+    <app-list-tools
+      label="execuções"
+      [statuses]="runStatuses"
+      [sorts]="runSorts"
+      [busy]="runs.state.busy() || !!runs.state.wait()"
+      (search)="runs.search($event)"
+      (refresh)="runs.load()"
+    />
+    @if (runs.state.error()) {
+      <p class="message error" role="alert">
+        {{ runs.state.error() }}
+        @if (runs.state.wait()) {
+          Aguarde {{ runs.state.wait() }}s.
+        }
+      </p>
+    }
+    @if (runs.state.busy()) {
+      <p role="status">Carregando execuções…</p>
+    }
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Execução / Origem</th>
+            <th>Situação</th>
+            <th>Resultados</th>
+            <th>Criada em</th>
+            <th>Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of runs.rows(); track item.id) {
+            <tr>
+              <td>
+                <strong>{{ item.name }}</strong>
+                <p>{{ item.planNameSnapshot ?? 'Avulsa' }}</p>
+              </td>
+              <td>{{ runLabels[item.status] }}</td>
+              <td>
+                {{ item.summary.total }} casos
+                <p>
+                  {{ item.summary.notTested }} não testados · {{ item.summary.failed }} falharam
+                </p>
+              </td>
+              <td>{{ item.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+              <td>
+                <button
+                  class="btn"
+                  [disabled]="state.busy() || !!state.wait()"
+                  (click)="openRun(item)"
+                >
+                  Abrir execução
+                </button>
+              </td>
+            </tr>
+          } @empty {
+            @if (!runs.state.busy() && !runs.state.error()) {
+              <tr>
+                <td colspan="5">Nenhuma execução encontrada para estes filtros.</td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+    <app-pagination
+      [pagination]="runs.pagination()"
+      [busy]="runs.state.busy() || !!runs.state.wait()"
+      (change)="runs.page($event)"
+    />
+  }
+}
+@if (creating(); as kind) {
+  <app-execution-context-editor
+    [project]="project()"
+    [run]="kind === 'run'"
+    [state]="createState"
+    [blocked]="createState.blocked()"
+    (saved)="save($event)"
+    (closed)="creating.set(null)"
+  >
+    @if (createState.blocked()) {
+      <p class="message info">
+        A resposta não pôde ser confirmada. Feche este formulário e consulte a lista antes de criar
+        novamente.
+      </p>
+    }
+  </app-execution-context-editor>
+}

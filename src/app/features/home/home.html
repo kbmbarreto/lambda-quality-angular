@@ -1,0 +1,426 @@
+<app-shell>
+  <div class="dashboard-heading">
+    <div>
+      <h1>Visão geral</h1>
+      <p>Acompanhe os testes, a qualidade e as prioridades da sua equipe.</p>
+    </div>
+    <form class="dashboard-filters" (ngSubmit)="refresh()">
+      <div>
+        <label for="dashboard-workspace">Workspace</label
+        ><select
+          id="dashboard-workspace"
+          name="workspace"
+          [(ngModel)]="workspaceId"
+          [disabled]="workspaceState.busy() || !!state.wait()"
+          (ngModelChange)="filtersChanged()"
+        >
+          <option value="">Todos os meus Workspaces</option>
+          @for (w of workspaces(); track w.id) {
+            <option [value]="w.id">{{ w.name }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label for="dashboard-period">Período</label
+        ><select
+          id="dashboard-period"
+          name="period"
+          [(ngModel)]="days"
+          [disabled]="!!state.wait()"
+          (ngModelChange)="filtersChanged()"
+        >
+          <option [ngValue]="7">Últimos 7 dias</option>
+          <option [ngValue]="30">Últimos 30 dias</option>
+          <option [ngValue]="90">Últimos 90 dias</option>
+          <option [ngValue]="'ALL'" [disabled]="!supportsAllPeriod()">Todo o período</option>
+        </select>
+      </div>
+      <button class="btn" type="submit" [disabled]="state.busy() || !!state.wait()">
+        {{
+          state.busy()
+            ? 'Carregando…'
+            : state.wait()
+              ? 'Aguarde ' + state.wait() + 's'
+              : 'Atualizar'
+        }}
+      </button>
+    </form>
+  </div>
+  @if (filterNotice()) {
+    <p class="message info" role="status">{{ filterNotice() }}</p>
+  }
+  @if (storageNotice()) {
+    <p class="message info" role="status">{{ storageNotice() }}</p>
+  }
+  @if (data() && !supportsAllPeriod()) {
+    <p class="dashboard-footnote">A consulta de todo o histórico ainda não está disponível.</p>
+  }
+  @if (state.error()) {
+    <p class="message error" role="alert">{{ state.error() }}</p>
+  }
+  @if (openDefectsState.error()) {
+    <div class="message error" role="alert">
+      Não foi possível consultar a contagem de defeitos abertos. {{ openDefectsState.error() }}
+      <button
+        class="btn"
+        type="button"
+        [disabled]="openDefectsState.busy() || !!openDefectsState.wait()"
+        (click)="loadOpenDefects()"
+      >
+        {{
+          openDefectsState.wait() ? 'Aguarde ' + openDefectsState.wait() + 's' : 'Tentar novamente'
+        }}
+      </button>
+    </div>
+  }
+  @if (workspaceState.error()) {
+    <p class="message info" role="status">
+      Não foi possível consultar a lista de Workspaces. A visão geral permanece disponível para os
+      seus acessos.
+    </p>
+  }
+  @if (unavailable()) {
+    <p class="message info" role="status">
+      O painel de indicadores ainda não está disponível. Acesse seus projetos pelos atalhos abaixo.
+    </p>
+  }
+  @if (data(); as overview) {
+    <p class="dashboard-updated">
+      Atualizado em {{ overview.generatedAt | date: 'dd/MM/yyyy HH:mm' }} ·
+      @if (overview.period.days === 'ALL') {
+        Todo o período ·
+      }
+      @if (overview.period.from) {
+        {{ overview.period.from | date: 'dd/MM/yyyy' }} a
+      }
+      {{ overview.period.to | date: 'dd/MM/yyyy' }}
+    </p>
+  }
+  <section
+    class="dashboard-metrics"
+    aria-label="Indicadores de qualidade"
+    [attr.aria-busy]="state.busy()"
+  >
+    @for (metric of metrics(); track metric.key) {
+      <article
+        class="dashboard-card dashboard-metric"
+        [class]="'dashboard-card dashboard-metric metric-' + metric.key"
+      >
+        @if (metric.key !== 'coverage') {
+          <a
+            class="dashboard-metric-link"
+            [routerLink]="metricLink(metric.key)"
+            [queryParams]="metric.key === 'executions' && workspaceId ? { workspaceId } : null"
+            [attr.aria-label]="'Ver ' + metric.label"
+          ></a>
+        }
+        <div class="dashboard-metric-main">
+          <span class="dashboard-icon" aria-hidden="true"
+            ><svg viewBox="0 0 24 24"><path [attr.d]="metric.icon" /></svg
+          ></span>
+          <div>
+            <h2>{{ metric.label }}</h2>
+            <strong
+              >{{ metric.value == null ? '—' : (metric.value | number: '1.0-1')
+              }}{{ metric.key === 'coverage' && metric.value != null ? '%' : '' }}</strong
+            >
+          </div>
+        </div>
+        <p>
+          @if (
+            overviewPeriod() !== 'ALL' &&
+              change(metric.value, metric.previousValue, metric.key === 'coverage');
+            as change
+          ) {
+            <span
+              [class.trend-good]="favorable(metric.key, metric.value, metric.previousValue)"
+              [class.trend-bad]="
+                metric.key === 'defects' &&
+                metric.value != null &&
+                metric.previousValue != null &&
+                metric.value > metric.previousValue
+              "
+              >{{ change }}</span
+            ><small> vs. período anterior</small>
+          } @else {
+            <small>{{
+              state.busy()
+                ? 'Consultando indicadores…'
+                : metric.value == null
+                  ? 'Indicador indisponível'
+                  : metric.hint
+            }}</small>
+          }
+        </p>
+      </article>
+    }
+  </section>
+  <div class="dashboard-grid">
+    <section class="dashboard-card" aria-labelledby="dashboard-results-title">
+      <div class="dashboard-card-heading">
+        <h2 id="dashboard-results-title">Resultados de testes</h2>
+        <a routerLink="/execucoes" [queryParams]="workspaceId ? { workspaceId } : null"
+          >Ver execuções</a
+        >
+      </div>
+      @if (data()?.results != null && results().total) {
+        <div class="dashboard-result-chart">
+          <svg
+            viewBox="0 0 160 160"
+            class="dashboard-donut"
+            role="img"
+            [attr.aria-label]="results().total + ' resultados de testes; distribuição na legenda'"
+          >
+            <circle cx="80" cy="80" r="60" fill="none" stroke="#edf1f6" stroke-width="20" />
+            @for (result of results().rows; track result.key) {
+              <circle
+                cx="80"
+                cy="80"
+                r="60"
+                fill="none"
+                [attr.stroke]="result.color"
+                stroke-width="20"
+                pathLength="100"
+                [attr.stroke-dasharray]="result.percent + ' ' + (100 - result.percent)"
+                [attr.stroke-dashoffset]="result.offset"
+                transform="rotate(-90 80 80)"
+              />
+            }
+            <text x="80" y="78" text-anchor="middle" class="dashboard-donut-total">
+              {{ results().total | number }}
+            </text>
+            <text x="80" y="98" text-anchor="middle">resultados</text>
+          </svg>
+          <ul class="dashboard-legend">
+            @for (result of results().rows; track result.key) {
+              <li>
+                <span class="dashboard-legend-label"
+                  ><i [style.background]="result.color" aria-hidden="true"></i
+                  >{{ result.label }}</span
+                ><span>{{ result.percent | number: '1.0-1' }}% ({{ result.count | number }})</span>
+              </li>
+            }
+          </ul>
+        </div>
+      } @else {
+        <p class="dashboard-empty">
+          {{
+            state.busy()
+              ? 'Carregando resultados…'
+              : data()?.results == null
+                ? 'Resultados indisponíveis neste acesso.'
+                : 'Nenhum resultado no período selecionado.'
+          }}
+        </p>
+      }
+    </section>
+    <section class="dashboard-card" aria-labelledby="dashboard-defects-title">
+      <div class="dashboard-card-heading">
+        <h2 id="dashboard-defects-title">Defeitos por situação</h2>
+        <a routerLink="/defeitos">Ver defeitos</a>
+      </div>
+      @if (data()?.defectsByStatus != null) {
+        <div class="dashboard-bars" aria-label="Distribuição dos defeitos">
+          @for (row of defects(); track row.key) {
+            <div class="dashboard-bar-column">
+              <div class="dashboard-bar-track">
+                <div
+                  class="dashboard-bar"
+                  [style.height.%]="row.height"
+                  [style.background]="row.color"
+                >
+                  <strong>{{ row.count }}</strong>
+                </div>
+              </div>
+              <span>{{ row.label }}</span>
+            </div>
+          }
+        </div>
+      } @else {
+        <p class="dashboard-empty">
+          {{ state.busy() ? 'Carregando defeitos…' : 'Distribuição indisponível neste acesso.' }}
+        </p>
+      }
+    </section>
+  </div>
+  <section class="dashboard-card dashboard-governance" aria-labelledby="dashboard-goals-title">
+    <div class="dashboard-card-heading">
+      <h2 id="dashboard-goals-title">Metas de governança</h2>
+      <a routerLink="/governanca">Ver todas</a>
+    </div>
+    <p class="dashboard-footnote">
+      Atendimento dos frameworks por avaliações · Conclusão das metas por ações.
+    </p>
+    <div class="dashboard-governance-layout">
+      <app-framework-goals [data]="data()?.frameworkGovernance ?? null" />
+      <div class="dashboard-goal-panel">
+        <h3>Metas e prioridades</h3>
+        @if (goalSummary(); as summary) {
+          <div class="governance-goal-totals" aria-label="Metas exibidas neste painel">
+            <span
+              ><strong>{{ summary.active }}</strong> Em andamento</span
+            >
+            <span
+              ><strong>{{ summary.achieved }}</strong> Atingidas</span
+            >
+            <span
+              ><strong>{{ summary.missed }}</strong> Não atingidas</span
+            >
+          </div>
+        }
+        <ul class="dashboard-goals">
+          @for (goal of data()?.governance ?? []; track goal.id) {
+            <li [class.goal-missed]="goal.status === 'MISSED'">
+              <div>
+                <a
+                  [routerLink]="['/workspaces', goal.workspaceId, 'governance']"
+                  [queryParams]="{ goalId: goal.id }"
+                  >{{ goal.name }}</a
+                ><span class="status-pill">{{ goalStatuses[goal.status] }}</span>
+                <small>{{ goal.frameworkName }}</small
+                ><small
+                  >{{ goal.sectionName
+                  }}{{ goal.ownerDisplayName ? ' · ' + goal.ownerDisplayName : '' }}</small
+                ><small>{{ goal.detail }}</small>
+                @let metricFirst = metricInCircle(goal);
+                @if (metricFirst) {
+                  <app-goal-metric
+                    [currentValue]="goal.currentValue"
+                    [targetValue]="goal.targetValue"
+                    [calculatedAt]="goal.calculatedAt"
+                    [circular]="true"
+                  />
+                }
+                <app-goal-action-progress
+                  [data]="goal.actionProgress"
+                  [overviewPercent]="goal.progress"
+                  [compact]="true"
+                  [showRing]="!metricFirst"
+                />
+                @if (
+                  !metricFirst &&
+                  (goal.currentValue !== undefined || goal.targetValue !== undefined)
+                ) {
+                  <app-goal-metric
+                    [currentValue]="goal.currentValue"
+                    [targetValue]="goal.targetValue"
+                    [calculatedAt]="goal.calculatedAt"
+                    [circular]="true"
+                  />
+                }
+                @if (goal.deadline) {
+                  <small>Prazo: {{ goal.deadline | date: 'dd/MM/yyyy' : 'UTC' }}</small>
+                }
+              </div>
+            </li>
+          } @empty {
+            <li class="dashboard-empty">
+              {{
+                state.busy()
+                  ? 'Carregando metas…'
+                  : data()?.governance == null
+                    ? 'Metas indisponíveis neste acesso.'
+                    : 'Nenhuma meta ativa neste escopo.'
+              }}
+            </li>
+          }
+        </ul>
+        <small class="dashboard-footnote"
+          >Resumo das metas exibidas. Abra “Ver todas” para consultar o catálogo completo.</small
+        >
+      </div>
+    </div>
+  </section>
+  <div class="dashboard-grid dashboard-secondary-grid">
+    <section
+      class="dashboard-card dashboard-projects-card"
+      aria-labelledby="dashboard-projects-title"
+    >
+      <app-dashboard-projects
+        [workspaces]="workspaces()"
+        [workspaceId]="workspaceId"
+        [ready]="!workspaceState.busy() && !workspaceState.error()"
+        [refreshKey]="projectRefresh()"
+        [overview]="data()?.projects ?? null"
+      />
+    </section>
+    <section class="dashboard-card" aria-labelledby="dashboard-activity-title">
+      <div class="dashboard-card-heading">
+        <h2 id="dashboard-activity-title">Atividade recente</h2>
+      </div>
+      <ul class="dashboard-feed">
+        @for (activity of data()?.activity ?? []; track activity.id) {
+          <li>
+            <span class="dashboard-feed-icon" aria-hidden="true">↻</span>
+            <div>
+              <a [routerLink]="link(activity.target)">{{ activity.title }}</a
+              ><small>{{ activity.context }}</small>
+            </div>
+            <time [attr.datetime]="activity.occurredAt">{{
+              activity.occurredAt | date: 'dd/MM HH:mm'
+            }}</time>
+          </li>
+        } @empty {
+          <li class="dashboard-empty">
+            {{
+              state.busy()
+                ? 'Carregando atividades…'
+                : data()?.activity == null
+                  ? 'Atividades indisponíveis neste acesso.'
+                  : 'Nenhuma atividade no período.'
+            }}
+          </li>
+        }
+      </ul>
+    </section>
+  </div>
+  <div class="dashboard-bottom-grid">
+    <section class="dashboard-card" aria-labelledby="dashboard-documents-title">
+      <div class="dashboard-card-heading">
+        <h2 id="dashboard-documents-title">Documentos e referências</h2>
+        <a routerLink="/workspaces">Ver Workspaces</a>
+      </div>
+      <ul class="dashboard-feed">
+        @for (document of data()?.documents ?? []; track document.id) {
+          <li>
+            <span class="dashboard-feed-icon" aria-hidden="true">▤</span>
+            <div>
+              <a [routerLink]="['/workspaces', document.workspaceId]">{{ document.name }}</a
+              ><small
+                >{{ document.versionLabel ? document.versionLabel + ' · ' : ''
+                }}{{ document.updatedAt | date: 'dd/MM/yyyy' }}</small
+              >
+            </div>
+          </li>
+        } @empty {
+          <li class="dashboard-empty">
+            {{
+              state.busy()
+                ? 'Carregando referências…'
+                : data()?.documents == null
+                  ? 'Referências indisponíveis neste acesso.'
+                  : 'Nenhum documento neste escopo.'
+            }}
+          </li>
+        }
+      </ul>
+    </section>
+    <section class="dashboard-card" aria-labelledby="dashboard-help-title">
+      <h2 id="dashboard-help-title">Suporte e ajuda</h2>
+      <p>Encontre rapidamente o que precisa para começar.</p>
+      <details class="dashboard-help">
+        <summary>Guia rápido</summary>
+        <p>
+          Organize a equipe em um Workspace, crie um projeto e cadastre os casos nas suítes. Use
+          planos e execuções para acompanhar os testes e registre defeitos nos resultados que
+          falharam.
+        </p>
+        <p>Avaliações e metas ficam em Governança. Dados da conta e sessões ficam em Meu Perfil.</p>
+      </details>
+      <div class="dashboard-shortcuts">
+        <a routerLink="/workspaces">Workspaces</a><a routerLink="/casos-de-teste">Casos de teste</a
+        ><a routerLink="/meu-perfil">Meu Perfil</a>
+      </div>
+    </section>
+  </div>
+</app-shell>

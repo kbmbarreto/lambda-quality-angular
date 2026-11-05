@@ -1,0 +1,158 @@
+<app-shell>
+  <section class="window">
+    <header class="window-header">Meu Perfil</header>
+    <div class="panel-body">
+      <h1>Meu Perfil</h1>
+      <p>Consulte os dados da sua conta e gerencie suas sessões de acesso.</p>
+    </div>
+  </section>
+  <section class="window" aria-labelledby="appearance-title">
+    <header class="window-header" id="appearance-title">Aparência</header>
+    <div class="panel-body">
+      <p>Escolha o visual mais confortável para trabalhar. A mudança é imediata.</p>
+      <fieldset class="theme-options">
+        <legend class="sr-only">Tema do sistema</legend>
+        <label class="theme-option" [class.selected]="preferences.theme() === 'LAMBDA'">
+          <input
+            type="radio"
+            name="theme"
+            value="LAMBDA"
+            [checked]="preferences.theme() === 'LAMBDA'"
+            (change)="preferences.selectTheme('LAMBDA')"
+          />
+          <span class="theme-preview preview-lambda" aria-hidden="true"><i></i><i></i><i></i></span>
+          <strong>Padrão Lambda</strong
+          ><span>Visual moderno, superfícies claras e destaques em azul.</span>
+          <small>Padrão do Lambda Quality</small>
+        </label>
+        <label class="theme-option" [class.selected]="preferences.theme() === 'LAMBDA_DARK'">
+          <input
+            type="radio"
+            name="theme"
+            value="LAMBDA_DARK"
+            [checked]="preferences.theme() === 'LAMBDA_DARK'"
+            (change)="preferences.selectTheme('LAMBDA_DARK')"
+          />
+          <span class="theme-preview preview-lambda-dark" aria-hidden="true"
+            ><i></i><i></i><i></i
+          ></span>
+          <strong>Lambda escuro</strong
+          ><span>O mesmo visual Lambda, com superfícies escuras e destaques em azul.</span>
+          <small>Contraste confortável para trabalhar</small>
+        </label>
+        <label class="theme-option" [class.selected]="preferences.theme() === 'CLASSIC'">
+          <input
+            type="radio"
+            name="theme"
+            value="CLASSIC"
+            [checked]="preferences.theme() === 'CLASSIC'"
+            (change)="preferences.selectTheme('CLASSIC')"
+          />
+          <span class="theme-preview preview-classic" aria-hidden="true"
+            ><i></i><i></i><i></i
+          ></span>
+          <strong>Clássico</strong
+          ><span>Tons azuis, degradês e a apresentação compacta de sempre.</span>
+          <small>Inspirado nos ERPs tradicionais</small>
+        </label>
+      </fieldset>
+      <p class="field-hint" role="status">
+        Tema atual: {{ themeNames[preferences.theme()] }}. A preferência é guardada neste navegador.
+      </p>
+      @if (preferences.storageError()) {
+        <p class="message info" role="status">{{ preferences.storageError() }}</p>
+      }
+    </div>
+  </section>
+  <div class="panel-grid">
+    <section class="window" aria-labelledby="profile-title">
+      <header class="window-header" id="profile-title">Dados da conta</header>
+      <div class="panel-body">
+        @if (error()) {
+          <p class="message error" role="alert">{{ error() }}</p>
+        }
+        <dl class="profile-details">
+          <dt>Nome</dt>
+          <dd>{{ auth.user()?.displayName }}</dd>
+          <dt>E-mail</dt>
+          <dd>{{ auth.user()?.email }}</dd>
+          <dt>Situação</dt>
+          <dd>{{ auth.user()?.status === 'ACTIVE' ? 'Ativo' : 'Suspenso' }}</dd>
+          <dt>Cadastro</dt>
+          <dd>{{ auth.user()?.createdAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
+        </dl>
+      </div>
+      <footer class="window-footer">
+        <button class="btn" type="button" (click)="reloadProfile()" [disabled]="busy()">
+          {{ busy() ? 'Aguarde…' : 'Atualizar perfil' }}
+        </button>
+      </footer>
+    </section>
+    <section class="window" aria-labelledby="health-title">
+      <header class="window-header" id="health-title">Disponibilidade do serviço</header>
+      <div class="panel-body">
+        <p class="service-status" role="status">
+          <span
+            class="status-dot"
+            [class.up]="health() === 'up'"
+            [class.down]="health() === 'down'"
+          ></span
+          >{{
+            checking()
+              ? 'Verificando…'
+              : health() === 'up'
+                ? 'Serviço disponível'
+                : health() === 'down'
+                  ? 'Serviço indisponível'
+                  : 'Ainda não verificado'
+          }}
+        </p>
+        <p>
+          A consulta verifica a aplicação e o banco de dados. A entrega de e-mail depende do
+          provedor.
+        </p>
+        @if (healthError()) {
+          <p class="message error" role="alert">{{ healthError() }}</p>
+        }
+        @if (checkedAt()) {
+          <p class="field-hint">Última consulta: {{ checkedAt() | date: 'dd/MM/yyyy HH:mm:ss' }}</p>
+        }
+      </div>
+      <footer class="window-footer">
+        <button class="btn" type="button" (click)="checkHealth()" [disabled]="checking()">
+          Verificar novamente
+        </button>
+      </footer>
+    </section>
+  </div>
+  <section class="window" aria-labelledby="session-title">
+    <header class="window-header" id="session-title">Sessões de acesso</header>
+    <div class="panel-body session-panel">
+      <div>
+        <p>Atualizar a página mantém seu acesso enquanto a sessão estiver válida.</p>
+        <p>A sessão é lembrada nesta aba. Ao sair, esse registro é apagado.</p>
+        <p>Você também pode encerrar seus acessos em outros dispositivos.</p>
+      </div>
+      @if (confirmLogoutAll()) {
+        <div class="confirmation" role="group" aria-label="Confirmar encerramento de sessões">
+          <p>Encerrar todas as suas sessões?</p>
+          <button
+            class="btn"
+            type="button"
+            (click)="confirmLogoutAll.set(false)"
+            [disabled]="busy()"
+          >
+            Cancelar
+          </button>
+          <button class="btn" type="button" (click)="logout(true)" [disabled]="busy()">
+            Confirmar
+          </button>
+        </div>
+      } @else {
+        <button class="btn" type="button" (click)="confirmLogoutAll.set(true)" [disabled]="busy()">
+          Encerrar todas as sessões
+        </button>
+      }
+    </div>
+  </section>
+</app-shell>

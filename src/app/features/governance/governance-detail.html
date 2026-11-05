@@ -1,0 +1,250 @@
+<section class="detail-card" aria-label="Detalhes de governança">
+  <div class="section-heading">
+    <h2>Detalhes</h2>
+    <button class="btn" type="button" [disabled]="navigationBusy()" (click)="closed.emit()">
+      Voltar à lista
+    </button>
+  </div>
+  <app-governance-summary [kind]="kind()" [item]="session.item()" />
+  @if (session.state.error()) {
+    <p class="message error" role="alert">
+      {{ session.state.error() }}
+      @if (session.state.wait()) {
+        Aguarde {{ session.state.wait() }}s.
+      }
+    </p>
+  }
+  @if (session.state.success()) {
+    <p class="message success" role="status">{{ session.state.success() }}</p>
+  }
+  @if (session.state.busy() || session.read.busy()) {
+    <p role="status">Consultando estado e atualizando dados…</p>
+  }
+  @if (catalogRead.error()) {
+    <p class="message error" role="alert">
+      {{ catalogRead.error() }}
+      @if (catalogRead.wait()) {
+        Aguarde {{ catalogRead.wait() }}s.
+      }
+    </p>
+  }
+  @if (catalogRead.busy()) {
+    <p role="status">Consultando opções de edição…</p>
+  }
+  @if (!editor() && !confirmation()) {
+    <app-governance-conflict [session]="session" />
+  }
+  @if (session.view().project; as p) {
+    <p class="message info">
+      Projeto vinculado: {{ p.key }} · {{ p.name }}.
+      @if (p.status === 'ARCHIVED') {
+        Projeto arquivado; alterações e cálculo estão bloqueados.
+      }
+    </p>
+  }
+  <div class="row-actions">
+    <button
+      class="btn"
+      type="button"
+      [disabled]="navigationBusy() || !!session.read.wait()"
+      (click)="session.reload()"
+    >
+      Atualizar registro
+    </button>
+    @if (editable()) {
+      <button class="btn" type="button" (click)="edit()">Editar dados</button>
+    }
+    @switch (kind()) {
+      @case ('frameworks') {
+        @if (session.framework().status === 'DRAFT' && canManage()) {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="!session.view().controls.some(activeControl)"
+            (click)="request('activate')"
+          >
+            Ativar framework
+          </button>
+        }
+        @if (session.framework().status !== 'ARCHIVED' && canManage()) {
+          <button class="btn" type="button" (click)="request('archive')">Arquivar framework</button>
+        }
+        @if (session.framework().status === 'ACTIVE' && session.canAssess()) {
+          <button
+            class="btn"
+            type="button"
+            (click)="
+              create.emit({ kind: 'assessments', links: { frameworkId: session.item().id } })
+            "
+          >
+            Criar avaliação deste framework
+          </button>
+        }
+      }
+      @case ('assessments') {
+        @if (session.assessment().status === 'DRAFT' && session.canAssess()) {
+          <button class="btn" type="button" (click)="request('start')">Iniciar avaliação</button>
+        }
+        @if (session.assessment().status === 'IN_PROGRESS' && session.can('governance.assess')) {
+          <button class="btn" type="button" [disabled]="!canClose()" (click)="request('close')">
+            Fechar avaliação
+          </button>
+        }
+      }
+      @case ('goals') {
+        @if (goal().status !== 'CANCELLED' && canManage()) {
+          <button class="btn" type="button" (click)="request('calculate')">
+            Atualizar métrica informativa</button
+          ><button class="btn" type="button" (click)="request('cancel')">Cancelar meta</button>
+        }
+        @if (goal().status !== 'CANCELLED' && canManage()) {
+          <button
+            class="btn"
+            type="button"
+            (click)="create.emit({ kind: 'actions', links: { goalId: goal().id } })"
+          >
+            Criar ação desta meta
+          </button>
+        }
+      }
+      @case ('actions') {
+        @if (!['DONE', 'CANCELLED'].includes(action().status) && canManage()) {
+          @if (action().status === 'OPEN') {
+            <button class="btn" type="button" (click)="request('progress')">Iniciar ação</button>
+          }
+          <button class="btn" type="button" (click)="request('complete')">Concluir ação</button
+          ><button class="btn" type="button" (click)="request('cancel')">Cancelar ação</button>
+        }
+      }
+    }
+  </div>
+  @switch (kind()) {
+    @case ('frameworks') {
+      <nav class="workspace-tabs" aria-label="Definição e acompanhamento">
+        <button
+          type="button"
+          [class.active]="frameworkTab() === 'structure'"
+          [disabled]="navigationBusy()"
+          (click)="frameworkTab.set('structure')"
+        >
+          Estrutura
+        </button>
+        <button
+          type="button"
+          [class.active]="frameworkTab() === 'tracking'"
+          [disabled]="navigationBusy()"
+          (click)="frameworkTab.set('tracking')"
+        >
+          Acompanhamento
+        </button>
+      </nav>
+      @if (frameworkTab() === 'structure') {
+        <app-framework-definition [session]="session" />
+      } @else {
+        <app-framework-tracking
+          [framework]="session.framework()"
+          [initialAssessmentId]="initialAssessmentId()"
+          [canCreate]="session.framework().status === 'ACTIVE' && session.canAssess()"
+          (create)="create.emit({ kind: 'assessments', links: { frameworkId: session.item().id } })"
+          (opened)="opened.emit({ kind: 'assessments', id: $event })"
+          (goal)="createSectionGoal($event)"
+          (action)="create.emit({ kind: 'actions', links: { controlAssessmentId: $event } })"
+          (changed)="changed.emit()"
+        />
+      }
+    }
+    @case ('assessments') {
+      <p class="message info">
+        Índice interno ponderado; não representa certificação ou conformidade oficial.
+        @if (session.assessment().status === 'CLOSED') {
+          Avaliação fechada. Classificações e evidências estão preservadas para consulta.
+        } @else {
+          Fechamento exige todos os controles classificados e justificativa para N/A.
+        }
+      </p>
+      <app-assessment-controls
+        [session]="session"
+        (action)="create.emit({ kind: 'actions', links: { controlAssessmentId: $event } })"
+        (goal)="createSectionGoal($event)"
+      />
+    }
+    @case ('goals') {
+      <p class="message info">
+        A conclusão e a situação da meta acompanham as ações vinculadas automaticamente. A métrica
+        informativa registra o último cálculo e pode estar desatualizada; atualizá-la é uma ação
+        explícita. Editar dados limpa esse resultado. Métricas de automação e defeitos do Workspace
+        utilizam todos os projetos ativos autorizados. Concluir ações não altera o atendimento dos
+        frameworks nas avaliações.
+      </p>
+      @if (session.can('governance.read')) {
+        <app-goal-actions
+          [session]="session"
+          [blocked]="!!editor() || !!confirmation()"
+          (opened)="opened.emit({ kind: 'actions', id: $event })"
+          (changed)="changed.emit()"
+        />
+      }
+    }
+    @case ('actions') {
+      <p class="message info">
+        Concluir, cancelar ou alterar o vínculo desta ação atualiza a conclusão e a situação das
+        metas afetadas. As avaliações dos frameworks permanecem preservadas. Conclusão e
+        cancelamento da ação são permanentes.
+      </p>
+      @if (session.view().linkedGoal; as linkedGoal) {
+        <section class="detail-card" aria-label="Meta vinculada à ação">
+          <div class="section-heading">
+            <h3>Meta: {{ linkedGoal.name }}</h3>
+            <button
+              class="btn"
+              type="button"
+              [disabled]="navigationBusy()"
+              (click)="opened.emit({ kind: 'goals', id: linkedGoal.id })"
+            >
+              Abrir meta
+            </button>
+          </div>
+          <p>{{ goalLabels[linkedGoal.status] }} · Versão {{ linkedGoal.version }}</p>
+          <app-goal-action-progress [data]="linkedGoal.actionProgress" />
+        </section>
+      }
+    }
+  }
+</section>
+@if (editor(); as fields) {
+  <app-form-dialog
+    title="Editar dados de governança"
+    [fields]="fields"
+    [state]="session.state"
+    [blocked]="!editable() || !!catalogRead.error()"
+    [loading]="catalogRead.busy()"
+    [wide]="true"
+    (saved)="save($event)"
+    (changed)="changeFields($event)"
+    (closed)="editor.set(null)"
+  >
+    @if (catalogRead.error()) {
+      <p class="message error" role="alert">{{ catalogRead.error() }}</p>
+      <button
+        class="btn"
+        type="button"
+        [disabled]="catalogRead.busy() || !!catalogRead.wait()"
+        (click)="loadEditor()"
+      >
+        Consultar opções novamente{{ catalogRead.wait() ? ' (' + catalogRead.wait() + 's)' : '' }}
+      </button>
+    }
+    <app-governance-conflict [session]="session"
+  /></app-form-dialog>
+}
+@if (confirmation(); as c) {
+  <app-confirm-dialog
+    [title]="c.title"
+    [message]="c.message"
+    [state]="session.state"
+    [blocked]="session.locked()"
+    (confirmed)="confirm()"
+    (closed)="confirmation.set(null)"
+    ><app-governance-conflict [session]="session"
+  /></app-confirm-dialog>
+}

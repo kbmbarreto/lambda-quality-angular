@@ -1,0 +1,252 @@
+<section class="detail-card" aria-label="Detalhes do plano">
+  <div class="section-heading">
+    <h2>{{ plan().name }}</h2>
+    <button class="btn" [disabled]="state.busy()" (click)="closed.emit()">Voltar à lista</button>
+  </div>
+  <p>
+    <strong>{{ labels[plan().status] }}</strong> · Versão {{ plan().version }} ·
+    {{ plan().cases.length }} casos
+  </p>
+  <p class="preserve-text">{{ plan().description ?? 'Sem descrição' }}</p>
+  <dl class="profile-details">
+    <dt>Marco / Ambiente</dt>
+    <dd>
+      {{
+        plan().milestoneId
+          ? contextNames()[plan().milestoneId!] || 'Marco indisponível'
+          : 'Sem marco'
+      }}
+      /
+      {{
+        plan().environmentId
+          ? contextNames()[plan().environmentId!] || 'Ambiente indisponível'
+          : 'Sem ambiente'
+      }}
+    </dd>
+    <dt>Criado por / em</dt>
+    <dd>{{ plan().createdBy }} / {{ plan().createdAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
+    <dt>Ativado / Concluído / Arquivado</dt>
+    <dd>
+      {{ (plan().activatedAt | date: 'dd/MM/yyyy HH:mm') ?? '—' }} /
+      {{ (plan().completedAt | date: 'dd/MM/yyyy HH:mm') ?? '—' }} /
+      {{ (plan().archivedAt | date: 'dd/MM/yyyy HH:mm') ?? '—' }}
+    </dd>
+  </dl>
+  @if (state.error() && !editing() && !action() && !creatingRun()) {
+    <p class="message error" role="alert">
+      {{ state.error() }}
+      @if (state.wait()) {
+        Aguarde {{ state.wait() }}s.
+      }
+    </p>
+  }
+  @if (read.error()) {
+    <p class="message error" role="alert">{{ read.error() }}</p>
+  }
+  @if (!editing() && !action() && !creatingRun()) {
+    <app-execution-conflict
+      [blocked]="state.blocked()"
+      [busy]="read.busy()"
+      [wait]="read.wait()"
+      [plan]="latest()"
+      [recentRuns]="latestRuns()"
+      (reload)="reload()"
+      (reviewed)="review()"
+    />
+  }
+  <div class="row-actions">
+    <button
+      class="btn"
+      [disabled]="state.busy() || read.busy() || !!read.wait()"
+      (click)="reload()"
+    >
+      Atualizar plano
+    </button>
+    <button class="btn" [disabled]="locked()" (click)="showRuns.emit(plan())">
+      Ver execuções deste plano
+    </button>
+    @if (draft()) {
+      <button class="btn" [disabled]="locked()" (click)="edit()">Editar plano</button>
+      @if (can('testcase.read')) {
+        <button
+          class="btn"
+          [disabled]="locked() || !plan().cases.length"
+          (click)="action.set('activate')"
+        >
+          Ativar plano
+        </button>
+      }
+    }
+    @if (can() && plan().status === 'ACTIVE') {
+      @if (can('testcase.read')) {
+        <button class="btn" [disabled]="locked()" (click)="creatingRun.set(true)">
+          Criar execução do plano
+        </button>
+      }
+      <button class="btn" [disabled]="locked()" (click)="action.set('complete')">
+        Concluir plano
+      </button>
+    }
+    @if (can() && plan().status !== 'ARCHIVED') {
+      <button class="btn" [disabled]="locked()" (click)="action.set('archive')">
+        Arquivar plano
+      </button>
+    }
+  </div>
+  @if (contextState.error()) {
+    <p class="message error" role="alert">{{ contextState.error() }}</p>
+    <button
+      class="btn"
+      [disabled]="contextState.busy() || !!contextState.wait()"
+      (click)="loadContext()"
+    >
+      Consultar contexto novamente
+    </button>
+  }
+  <h3>Seleção ordenada</h3>
+  @if (state.success()) {
+    <p class="message success" role="status">{{ state.success() }}</p>
+  }
+  @if (batchProgress()) {
+    <p role="status">
+      {{ batchProgress() }} Em caso de interrupção, atualize o plano antes de continuar.
+    </p>
+  }
+  @if (namesState.error()) {
+    <p class="message error" role="alert">{{ namesState.error() }}</p>
+    <button
+      class="btn"
+      [disabled]="namesState.busy() || !!namesState.wait()"
+      (click)="loadNames(true)"
+    >
+      Consultar títulos novamente
+    </button>
+  }
+  @for (item of visibleCases(); track item.testCaseId; let index = $index) {
+    <div class="picker-item">
+      <span
+        >{{ item.position }}. {{ names()[item.testCaseId]?.humanId || item.testCaseId }} ·
+        {{ names()[item.testCaseId]?.title || 'Definição não carregada' }}
+        @if (names()[item.testCaseId]) {
+          ({{ caseStatuses[names()[item.testCaseId].status] }})
+        }
+      </span>
+      @if (draft()) {
+        <div class="row-actions">
+          <button
+            class="btn"
+            [attr.aria-label]="'Subir caso ' + item.position"
+            [disabled]="locked() || item.position === 1"
+            (click)="move(item.position - 1, -1)"
+          >
+            ↑</button
+          ><button
+            class="btn"
+            [attr.aria-label]="'Descer caso ' + item.position"
+            [disabled]="locked() || item.position === plan().cases.length"
+            (click)="move(item.position - 1, 1)"
+          >
+            ↓</button
+          ><button class="btn" [disabled]="locked()" (click)="remove(item.testCaseId)">
+            Remover caso
+          </button>
+        </div>
+      }
+    </div>
+  } @empty {
+    <p>Plano vazio. Adicione casos antes de ativar.</p>
+  }
+  <app-pagination
+    [pagination]="selectionPagination()"
+    [busy]="locked() || namesState.busy()"
+    (change)="pageSelection($event)"
+  />
+  @if (namesState.busy()) {
+    <p role="status">Carregando títulos dos casos…</p>
+  }
+  @if (draft() && can('testcase.read')) {
+    <app-execution-case-selection
+      [project]="project()"
+      [allowDraft]="true"
+      [selected]="pendingCases()"
+      [excluded]="ids()"
+      [limit]="500 - ids().length"
+      [blocked]="locked()"
+      (changed)="pendingCases.set($event)"
+    />
+    <button class="btn" [disabled]="locked() || !pendingCases().length" (click)="addSelected()">
+      Adicionar {{ pendingCases().length }} casos ao plano
+    </button>
+  }
+  @if (plan().status === 'ACTIVE') {
+    <p class="message info">
+      A seleção está congelada. Cada nova execução preserva a definição vigente dos casos no momento
+      da criação.
+    </p>
+  }
+</section>
+@if (editing(); as current) {
+  <app-execution-context-editor
+    [project]="project()"
+    [plan]="current"
+    [state]="state"
+    [blocked]="locked() || !draft()"
+    (saved)="save($event)"
+    (closed)="editing.set(null)"
+    ><app-execution-conflict
+      [blocked]="state.blocked()"
+      [busy]="read.busy()"
+      [wait]="read.wait()"
+      [plan]="latest()"
+      [recentRuns]="latestRuns()"
+      (reload)="reload()"
+      (reviewed)="review()"
+  /></app-execution-context-editor>
+}
+@if (action(); as command) {
+  <app-confirm-dialog
+    [title]="
+      command === 'activate'
+        ? 'Ativar plano'
+        : command === 'complete'
+          ? 'Concluir plano'
+          : 'Arquivar plano'
+    "
+    [message]="
+      command === 'activate'
+        ? 'Todos os casos devem estar ativos. A ativação congela os metadados e a seleção.'
+        : 'Não pode haver execuções criadas ou em andamento. Esta ação não pode ser desfeita.'
+    "
+    [state]="state"
+    [blocked]="locked() || !actionAllowed(command)"
+    (confirmed)="transition()"
+    (closed)="action.set(null)"
+    ><app-execution-conflict
+      [blocked]="state.blocked()"
+      [busy]="read.busy()"
+      [wait]="read.wait()"
+      [plan]="latest()"
+      [recentRuns]="latestRuns()"
+      (reload)="reload()"
+      (reviewed)="review()"
+  /></app-confirm-dialog>
+}
+@if (creatingRun()) {
+  <app-form-dialog
+    title="Criar execução do plano"
+    [fields]="runFields"
+    [state]="state"
+    [blocked]="state.blocked() || plan().status !== 'ACTIVE'"
+    hint="Marco e ambiente são herdados do plano. Consulte suas execuções após uma resposta incerta para evitar duplicação."
+    (saved)="createRun($event)"
+    (closed)="creatingRun.set(false)"
+    ><app-execution-conflict
+      [blocked]="state.blocked()"
+      [busy]="read.busy()"
+      [wait]="read.wait()"
+      [plan]="latest()"
+      [recentRuns]="latestRuns()"
+      (reload)="reload()"
+      (reviewed)="review()"
+  /></app-form-dialog>
+}

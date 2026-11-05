@@ -1,0 +1,256 @@
+@if (session().ready() || session().view().sections.length || session().state.blocked()) {
+  <section aria-label="Seções e controles do framework">
+    <div class="repository-heading">
+      <div>
+        <h2>Estrutura do framework</h2>
+        <p>
+          {{ session().view().controls.length }} controles ·
+          {{ session().view().sections.length }} seções
+        </p>
+      </div>
+    </div>
+    <p>
+      Selecione uma seção para consultar e cadastrar seus controles. Avaliações já criadas preservam
+      sua própria cópia.
+    </p>
+    <div class="test-repository-layout framework-repository">
+      <app-section-tree
+        [sections]="session().view().sections"
+        [controls]="session().view().controls"
+        [selectedId]="selectedSection()?.id ?? ''"
+        [canCreate]="canEdit()"
+        [disabled]="session().locked() || !!editor()"
+        (selected)="selectSection($event)"
+        (create)="openSection()"
+      />
+      <div class="repository-content">
+        <div class="repository-suite-heading">
+          <div>
+            @if (selectedSection(); as section) {
+              <p class="suite-path">{{ path(section.id, session().view().sections) }}</p>
+              <h2>{{ section.name }}</h2>
+              <p>
+                {{ directCount() }} controles nesta seção · {{ branchCount() }} incluindo subseções
+              </p>
+              @if (section.description) {
+                <p class="preserve-text">{{ section.description }}</p>
+              }
+            } @else {
+              <h2>Todos os controles</h2>
+              <p>Selecione uma seção na árvore para adicionar controles diretamente nela.</p>
+            }
+          </div>
+          @if (canEdit()) {
+            <div class="row-actions">
+              @if (selectedSection(); as section) {
+                <button
+                  class="btn"
+                  type="button"
+                  [disabled]="!canAddSection(section.id)"
+                  (click)="openSection(undefined, section.id)"
+                >
+                  + Subseção
+                </button>
+                <button class="btn" type="button" (click)="openSection(section)">
+                  Editar / mover seção
+                </button>
+              } @else {
+                <button
+                  class="btn"
+                  type="button"
+                  [disabled]="
+                    !session().view().sections.length || session().view().controls.length >= 1000
+                  "
+                  (click)="openControl()"
+                >
+                  + Controle
+                </button>
+              }
+            </div>
+          }
+        </div>
+        @if (showQuickCreate() && selectedSection(); as section) {
+          <div class="framework-quick-create">
+            <form
+              [formGroup]="quickForm"
+              (ngSubmit)="quickCreate()"
+              [attr.aria-busy]="session().state.busy()"
+            >
+              <h3>Adicionar controle em {{ section.name }}</h3>
+              <fieldset
+                class="framework-quick-fields"
+                [disabled]="
+                  session().locked() || !!editor() || session().view().controls.length >= 1000
+                "
+              >
+                <div class="field">
+                  <label for="framework-quick-code">Código *</label>
+                  <input
+                    #quickCode
+                    id="framework-quick-code"
+                    formControlName="code"
+                    maxlength="50"
+                    placeholder="Ex.: TMMI-2-1"
+                    aria-describedby="framework-quick-code-error"
+                  />
+                  <span id="framework-quick-code-error" class="field-error">{{
+                    quickError('code')
+                  }}</span>
+                </div>
+                <div class="field">
+                  <label for="framework-quick-title">Título *</label>
+                  <input
+                    id="framework-quick-title"
+                    formControlName="title"
+                    maxlength="250"
+                    placeholder="Nome do controle"
+                    aria-describedby="framework-quick-title-error"
+                  />
+                  <span id="framework-quick-title-error" class="field-error">{{
+                    quickError('title')
+                  }}</span>
+                </div>
+                <button class="btn" type="submit">+ Adicionar</button>
+              </fieldset>
+            </form>
+            <p class="field-hint">
+              Controle ativo, peso 1. Código: letras maiúsculas, números, ponto, traço ou
+              sublinhado.
+            </p>
+            <button
+              class="case-suite-link"
+              type="button"
+              [disabled]="session().locked() || session().view().controls.length >= 1000"
+              (click)="openControl()"
+            >
+              Cadastro completo: descrição e peso
+            </button>
+            @if (session().view().controls.length >= 1000) {
+              <p class="message info">Limite de 1000 controles atingido.</p>
+            }
+          </div>
+        }
+        <form class="list-toolbar framework-control-toolbar" (ngSubmit)="controlPage.set(1)">
+          <label class="sr-only" for="governance-control-search">Buscar controles</label>
+          <input
+            id="governance-control-search"
+            placeholder="Buscar código ou título de controle"
+            maxlength="100"
+            name="q"
+            [(ngModel)]="controlQuery"
+            (ngModelChange)="controlPage.set(1)"
+          />
+          <label class="sr-only" for="governance-control-active">Atividade dos controles</label>
+          <select
+            id="governance-control-active"
+            name="active"
+            [(ngModel)]="activeFilter"
+            (ngModelChange)="controlPage.set(1)"
+          >
+            <option value="">Ativos e inativos</option>
+            <option value="true">Ativos</option>
+            <option value="false">Inativos</option>
+          </select>
+          <button class="btn" type="submit">Buscar controles</button>
+        </form>
+        @if (selectedSection()) {
+          <label class="framework-descendants"
+            ><input
+              type="checkbox"
+              [(ngModel)]="includeDescendants"
+              (ngModelChange)="controlPage.set(1)"
+            />
+            Incluir controles das subseções</label
+          >
+        }
+        <div class="table-scroll">
+          <table class="data-table repository-case-table framework-controls-table">
+            <thead>
+              <tr>
+                <th scope="col">Controle</th>
+                <th scope="col">Situação</th>
+                <th scope="col">Peso</th>
+                <th scope="col">Seção</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of visibleControls(); track row.id) {
+                <tr>
+                  <td>
+                    @if (canEdit()) {
+                      <button class="case-title-link" type="button" (click)="openControl(row)">
+                        <strong class="case-human-id">{{ row.code }}</strong
+                        ><span>{{ row.title }}</span>
+                      </button>
+                    } @else {
+                      <strong class="case-human-id">{{ row.code }}</strong> {{ row.title }}
+                    }
+                    @if (row.description) {
+                      <details class="framework-control-description">
+                        <summary>Descrição</summary>
+                        <p class="preserve-text">{{ row.description }}</p>
+                      </details>
+                    }
+                  </td>
+                  <td>
+                    <span class="case-status-badge" [class.archived]="!row.active">{{
+                      row.active ? 'Ativo' : 'Inativo'
+                    }}</span>
+                  </td>
+                  <td>{{ row.weight }}</td>
+                  <td>
+                    <span class="framework-control-path">{{
+                      path(row.sectionId, session().view().sections)
+                    }}</span>
+                    @if (canEdit()) {
+                      <button
+                        class="case-suite-link"
+                        type="button"
+                        [attr.aria-label]="'Alterar seção de ' + row.code"
+                        (click)="openMove(row)"
+                      >
+                        Alterar seção
+                      </button>
+                    }
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="4" class="repository-empty">
+                    {{
+                      !session().view().sections.length
+                        ? 'Comece criando uma seção na árvore ao lado.'
+                        : 'Nenhum controle encontrado. Cadastre um controle ou ajuste os filtros.'
+                    }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <app-pagination
+          [pagination]="controlPagination()"
+          [busy]="session().locked()"
+          (change)="controlPage.set($event)"
+        />
+      </div>
+    </div>
+  </section>
+}
+@if (editor(); as e) {
+  <app-form-dialog
+    [title]="e.title"
+    [fields]="e.fields"
+    [state]="session().state"
+    [blocked]="!canEdit()"
+    [wide]="e.kind !== 'move-control'"
+    [hint]="
+      e.kind === 'move-control'
+        ? 'Escolha a seção de destino deste controle.'
+        : 'A seção selecionada já vem preenchida. Os detalhes podem ser ajustados antes de salvar.'
+    "
+    (saved)="save($event)"
+    (closed)="editor.set(null)"
+    ><app-governance-conflict [session]="session()"
+  /></app-form-dialog>
+}

@@ -1,0 +1,289 @@
+<section class="detail-card" aria-label="Evidências do controle">
+  <div class="section-heading">
+    <h3>Evidências · {{ control().controlSnapshot.code }}</h3>
+    <button
+      class="btn"
+      type="button"
+      [disabled]="session().state.busy() || session().read.busy()"
+      (click)="closed.emit()"
+    >
+      Fechar evidências
+    </button>
+  </div>
+  <p>
+    Até 100 vínculos por controle. Validade vencida sinaliza atenção; a classificação permanece
+    inalterada.
+  </p>
+  @if (session().assessment().status === 'DRAFT') {
+    <p class="message info">
+      Esta avaliação está em rascunho. Inicie a avaliação para classificar os controles e adicionar
+      evidências.
+    </p>
+    @if (session().can('governance.assess')) {
+      <button
+        class="btn"
+        type="button"
+        [disabled]="!canStart() || list.state.busy()"
+        (click)="starting.set(true)"
+      >
+        Iniciar avaliação
+      </button>
+    }
+  } @else if (session().assessment().status === 'CLOSED') {
+    <p class="message info">
+      A avaliação foi encerrada. As evidências estão preservadas para consulta; novas evidências
+      devem ser adicionadas a uma avaliação em andamento.
+    </p>
+  }
+  @if (!session().can('governance.assess')) {
+    <p class="message info">
+      Seu acesso permite consultar as evidências. Para adicionar ou remover vínculos, solicite
+      permissão para avaliar a governança do Workspace.
+    </p>
+  }
+  <div class="row-actions">
+    @if (canEdit()) {
+      <button class="btn" type="button" [disabled]="!canAdd()" (click)="open('URL')">
+        Adicionar evidência por URL
+      </button>
+      @if (canFiles()) {
+        @if (canUpload()) {
+          <button class="btn" type="button" [disabled]="!canAdd()" (click)="open('UPLOAD')">
+            Enviar arquivo como evidência
+          </button>
+        }
+        <button class="btn" type="button" [disabled]="!canAdd()" (click)="open('ATTACHMENT')">
+          Selecionar anexo existente
+        </button>
+      }
+      <button class="btn" type="button" (click)="open('REMOVE')">
+        Remover vínculo de evidência por ID
+      </button>
+    }
+  </div>
+  @if (canEdit() && canFiles() && !canUpload()) {
+    <p class="message info">
+      Você pode vincular arquivos existentes. Para enviar um novo arquivo aqui, solicite permissão
+      de envio de anexos.
+    </p>
+  }
+  @if ((list.pagination()?.totalItems ?? 0) >= 100) {
+    <p class="message info">
+      Este controle atingiu o limite de 100 evidências. Remova um vínculo para adicionar outra
+      evidência.
+    </p>
+  }
+  @if (!canFiles()) {
+    <p class="message info">
+      A leitura de controles com evidências de arquivos exige permissão de anexos, mesmo na busca de
+      URLs. Vínculos podem ser removidos por ID com permissão de avaliação.
+    </p>
+  }
+  <app-list-tools
+    label="evidências"
+    [sorts]="sorts"
+    [busy]="list.state.busy() || !!list.state.wait() || session().state.busy()"
+    (search)="consulted.set(true); list.search($event)"
+    (refresh)="load()"
+  />
+  @if (!consulted()) {
+    <button class="btn" type="button" (click)="load()">Consultar evidências disponíveis</button>
+  }
+  @if (list.state.error()) {
+    <p class="message error" role="alert">
+      {{ list.state.error() }}
+      @if (list.state.wait()) {
+        Aguarde {{ list.state.wait() }}s.
+      }
+    </p>
+  }
+  @if (list.state.busy()) {
+    <p role="status">Consultando evidências…</p>
+  }
+  @if (filesState.error()) {
+    <p class="message error" role="alert">
+      {{ filesState.error() }}
+      @if (filesState.wait()) {
+        Aguarde {{ filesState.wait() }}s.
+      }
+    </p>
+  }
+  @for (e of list.rows(); track e.id) {
+    <article class="detail-card">
+      <h4>{{ e.title }}</h4>
+      <p>Criada por {{ e.createdBy }} · {{ e.createdAt | date: 'dd/MM/yyyy HH:mm:ss' }}</p>
+      <p>
+        Validade: {{ e.validUntil ? e.validUntil.split('-').reverse().join('/') : 'Sem prazo' }}
+        @if (expired(e)) {
+          <strong> · Vencida</strong>
+        }
+      </p>
+      @if (e.evidenceType === 'URL') {
+        @if (safeUrl(e.url)) {
+          <a [href]="e.url" target="_blank" rel="noopener noreferrer" class="preserve-text">{{
+            e.url
+          }}</a>
+        } @else {
+          <p>URL indisponível para navegação.</p>
+        }
+      } @else {
+        <p class="preserve-text">
+          {{ e.attachmentSnapshot?.originalName }} · {{ e.attachmentSnapshot?.contentType }} ·
+          {{ e.attachmentSnapshot?.sizeBytes }} bytes
+        </p>
+        @if (e.attachmentAvailable) {
+          @if (canFiles()) {
+            <button
+              class="btn"
+              type="button"
+              [disabled]="filesState.busy() || !!filesState.wait()"
+              (click)="download(e)"
+            >
+              Baixar evidência
+            </button>
+          }
+        } @else {
+          <p class="message info">
+            Arquivo indisponível. A descrição histórica da evidência foi preservada.
+          </p>
+        }
+      }
+      @if (canEdit()) {
+        <button class="btn" type="button" (click)="removal.set(e)">
+          Remover vínculo de evidência
+        </button>
+      }
+    </article>
+  } @empty {
+    @if (consulted() && !list.state.busy() && !list.state.error()) {
+      <p>Nenhuma evidência encontrada.</p>
+    }
+  }
+  <app-pagination
+    [pagination]="list.pagination()"
+    [busy]="list.state.busy() || !!list.state.wait() || session().state.busy()"
+    (change)="list.page($event)"
+  />
+  <details>
+    <summary>Biblioteca do Workspace</summary>
+    <p>Os arquivos enviados aqui ficam disponíveis na biblioteca privada para reutilização.</p>
+    <a [routerLink]="['/workspaces', session().item().workspaceId]"
+      >Administrar biblioteca do Workspace</a
+    >
+  </details>
+</section>
+@if (editor(); as e) {
+  <app-form-dialog
+    [title]="
+      e.mode === 'REMOVE'
+        ? 'Remover vínculo por ID'
+        : e.mode === 'UPLOAD'
+          ? 'Enviar arquivo como evidência'
+          : 'Adicionar evidência'
+    "
+    [fields]="e.fields"
+    [state]="session().state"
+    [blocked]="
+      (e.mode === 'REMOVE' ? !canEdit() : !canAdd()) ||
+      (e.mode === 'UPLOAD' && !chosen() && (!file() || uploadUncertain()))
+    "
+    [wide]="true"
+    [submitLabel]="
+      e.mode === 'UPLOAD' ? (chosen() ? 'Vincular arquivo' : 'Enviar e vincular') : 'Salvar'
+    "
+    [hint]="
+      e.mode === 'UPLOAD'
+        ? 'Envie a evidência diretamente para este controle. O título pode ser alterado e a validade é opcional.'
+        : 'A evidência pertence à avaliação. URL é uma referência manual. Remover vínculo preserva o arquivo.'
+    "
+    (saved)="save($event)"
+    (closed)="editor.set(null)"
+    ><app-governance-conflict [session]="session()" />
+    @if (e.mode === 'UPLOAD') {
+      @if (session().state.busy()) {
+        <p role="status">
+          {{ chosen() ? 'Confirmando vínculo e atualizando evidências…' : 'Enviando arquivo…' }}
+        </p>
+      }
+      @if (chosen(); as uploaded) {
+        <p class="message info">
+          Arquivo disponível: {{ uploaded.originalName }}. Ao salvar, o arquivo será vinculado sem
+          repetir o envio.
+        </p>
+      } @else {
+        <div class="field">
+          <label for="governance-evidence-file">Arquivo *</label>
+          <input
+            id="governance-evidence-file"
+            type="file"
+            [accept]="accept"
+            [disabled]="!canEdit() || !canUpload() || uploadUncertain()"
+            aria-describedby="governance-evidence-file-help governance-evidence-file-error"
+            (change)="selectFile($event)"
+          />
+          <span id="governance-evidence-file-help" class="field-hint"
+            >PNG, JPEG, PDF, TXT ou CSV UTF-8, até 10 MiB. Ao salvar, o arquivo será enviado e
+            vinculado a este controle.</span
+          >
+          @if (file(); as selected) {
+            <p>{{ selected.name }} · {{ selected.size }} bytes</p>
+          }
+        </div>
+      }
+      @if (fileError()) {
+        <p id="governance-evidence-file-error" class="message error" role="alert">
+          {{ fileError() }}
+        </p>
+      }
+      @if (uploadUncertain()) {
+        <p class="message info">
+          Não foi possível confirmar o envio do arquivo. Consulte os dados atuais acima e confira a
+          biblioteca abaixo antes de repetir. Se o arquivo já estiver disponível, selecione-o para
+          continuar sem outro envio.
+        </p>
+        <app-defect-attachment-selection
+          [workspaceId]="session().item().workspaceId"
+          [single]="true"
+          [blocked]="!canEdit()"
+          (added)="choose($event)"
+        />
+        <button class="btn" type="button" [disabled]="!canRetryUpload()" (click)="retryUpload()">
+          Conferi a biblioteca; tentar envio novamente
+        </button>
+      }
+    }
+    @if (e.mode === 'ATTACHMENT') {
+      @if (chosen(); as file) {
+        <p class="message info">Selecionado: {{ file.originalName }}</p>
+      }
+      <app-defect-attachment-selection
+        [workspaceId]="session().item().workspaceId"
+        [single]="true"
+        [blocked]="!canEdit()"
+        (added)="choose($event)"
+      />
+    }
+  </app-form-dialog>
+}
+@if (starting()) {
+  <app-confirm-dialog
+    title="Iniciar avaliação"
+    message="Iniciar esta avaliação para classificar controles e adicionar evidências? A estrutura copiada do framework será preservada."
+    [state]="session().state"
+    [blocked]="!canStart()"
+    (confirmed)="start()"
+    (closed)="starting.set(false)"
+    ><app-governance-conflict [session]="session()"
+  /></app-confirm-dialog>
+}
+@if (removal()) {
+  <app-confirm-dialog
+    title="Remover vínculo de evidência"
+    message="Remover esta evidência da avaliação? O arquivo permanece na biblioteca privada."
+    [state]="session().state"
+    [blocked]="!canEdit()"
+    (confirmed)="remove()"
+    (closed)="removal.set(null)"
+    ><app-governance-conflict [session]="session()"
+  /></app-confirm-dialog>
+}

@@ -1,0 +1,181 @@
+<h2>Membros</h2>
+<p>
+  O status do vínculo vale apenas para este Workspace. O proprietário é independente dos papéis de
+  acesso.
+</p>
+<app-list-tools
+  label="membros"
+  [busy]="list.state.busy() || !!list.state.wait()"
+  [statuses]="statuses"
+  [sorts]="sorts"
+  (search)="list.search($event)"
+  (refresh)="list.load()"
+/>
+<div class="list-toolbar">
+  <button class="btn" type="button" (click)="openPicker('roleFilter')">Filtrar por papel</button
+  ><button class="btn" type="button" (click)="openPicker('groupFilter')">Filtrar por grupo</button>
+  @if (list.query.roleId || list.query.groupId) {
+    <button class="btn" type="button" (click)="clearFilters()">Limpar filtros de acesso</button>
+  }
+</div>
+@if (list.state.error() || operation.error()) {
+  <p class="message error" role="alert">
+    {{ list.state.error() || operation.error() }}
+    @if (list.state.wait() || operation.wait()) {
+      Aguarde {{ list.state.wait() || operation.wait() }}s.
+    }
+  </p>
+}
+@if (list.state.busy()) {
+  <p role="status">Carregando membros…</p>
+}
+@if (!list.state.busy() && !list.state.error() && !list.rows().length) {
+  <p class="empty-state">Nenhum membro encontrado.</p>
+}
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Nome / e-mail</th>
+        <th>Vínculo</th>
+        <th>Papéis e grupos</th>
+        <th>Entrada</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (member of list.rows(); track member.id) {
+        <tr>
+          <td>
+            <strong>{{ member.user.displayName }}</strong
+            ><small>{{ member.user.email }}</small>
+            @if (member.isOwner) {
+              <span class="badge">Proprietário</span>
+            }
+          </td>
+          <td>
+            {{
+              member.status === 'ACTIVE'
+                ? 'Ativo'
+                : member.status === 'SUSPENDED'
+                  ? 'Suspenso'
+                  : 'Removido'
+            }}
+          </td>
+          <td>
+            @for (role of member.roles; track $index) {
+              <span class="badge"
+                >{{ role.name }} · {{ role.source === 'DIRECT' ? 'Direto' : 'Grupo' }}</span
+              >
+            }
+            @for (group of member.groups; track group.id) {
+              <small>Grupo: {{ group.name }}</small>
+            }
+          </td>
+          <td>{{ member.joinedAt | date: 'dd/MM/yyyy' }}</td>
+          <td class="row-actions">
+            <button class="btn" type="button" (click)="view(member)" [disabled]="operation.busy()">
+              Consultar
+            </button>
+            @if (
+              can('workspace.manage_members') && !member.isOwner && member.status !== 'REMOVED'
+            ) {
+              <button
+                class="btn"
+                type="button"
+                [disabled]="operation.busy()"
+                (click)="request(member, member.status === 'ACTIVE' ? 'suspend' : 'activate')"
+              >
+                {{ member.status === 'ACTIVE' ? 'Suspender' : 'Reativar' }}</button
+              ><button
+                class="btn"
+                type="button"
+                [disabled]="operation.busy()"
+                (click)="request(member, 'remove')"
+              >
+                Remover
+              </button>
+            }
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
+<app-pagination
+  [pagination]="list.pagination()"
+  [busy]="list.state.busy()"
+  (change)="list.page($event)"
+/>
+@if (selected(); as member) {
+  <section class="detail-card">
+    <div class="section-heading">
+      <h3>{{ member.user.displayName }}</h3>
+      <button class="link-button" type="button" (click)="selected.set(null)">
+        Fechar detalhes
+      </button>
+    </div>
+    <p>
+      {{ member.user.email }} · Identidade global:
+      {{ member.user.status === 'ACTIVE' ? 'Ativa' : 'Suspensa' }}
+    </p>
+    <h4>Papéis de acesso</h4>
+    @for (role of member.roles; track $index) {
+      <div class="picker-item">
+        <span
+          >{{ role.name }} ·
+          {{ role.source === 'DIRECT' ? 'Concessão direta' : 'Herdado por grupo' }}</span
+        >
+        @if (
+          role.source === 'DIRECT' && can('workspace.manage_roles') && member.status !== 'REMOVED'
+        ) {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="operation.busy() || !!operation.wait()"
+            (click)="revoke(role.id)"
+          >
+            Revogar direto
+          </button>
+        }
+      </div>
+    }
+    @if (can('workspace.manage_roles') && member.status !== 'REMOVED') {
+      <button class="btn" type="button" [disabled]="operation.busy()" (click)="openPicker('role')">
+        Atribuir papel direto
+      </button>
+    }
+    <p class="field-hint">Revogar uma concessão direta mantém os direitos herdados por grupos.</p>
+  </section>
+}
+@if (confirmation(); as current) {
+  <app-confirm-dialog
+    [title]="
+      current.action === 'remove'
+        ? 'Remover membro'
+        : current.action === 'suspend'
+          ? 'Suspender membro'
+          : 'Reativar membro'
+    "
+    [message]="
+      current.action === 'remove'
+        ? 'Remover o vínculo de ' +
+          current.member.user.displayName +
+          '? Para retornar, será necessário um novo convite. A conta global será preservada.'
+        : 'Alterar o acesso de ' + current.member.user.displayName + ' neste Workspace?'
+    "
+    [state]="operation"
+    (confirmed)="confirm()"
+    (closed)="confirmation.set(null)"
+  />
+}
+@if (picker(); as current) {
+  <app-resource-picker
+    [workspaceId]="workspace().id"
+    [resource]="current === 'groupFilter' ? 'groups' : 'roles'"
+    [title]="current === 'role' ? 'Atribuir papel direto' : 'Filtrar membros'"
+    [eligible]="current === 'role' ? eligibleRole : alwaysEligible"
+    (chosen)="choose($event)"
+    (closed)="picker.set(null)"
+  />
+}

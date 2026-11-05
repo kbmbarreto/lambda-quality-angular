@@ -1,0 +1,336 @@
+@if (item(); as current) {
+  <section class="detail-card" aria-label="Detalhes do caso de teste">
+    <div class="section-heading">
+      <h2>{{ current.humanId }} · {{ current.title }}</h2>
+      <div class="table-actions">
+        <button class="btn" type="button" [disabled]="disabled()" (click)="reload()">
+          Atualizar caso</button
+        ><button class="btn" type="button" [disabled]="disabled()" (click)="closed.emit()">
+          Voltar à lista
+        </button>
+      </div>
+    </div>
+    @if (state.error() && !editor() && !dialog() && !confirmation()) {
+      <p class="message error" role="alert">{{ state.error() }}</p>
+    }
+    @if (readState.error()) {
+      <p class="message error" role="alert">
+        {{ readState.error() }}
+        @if (readState.wait()) {
+          Aguarde {{ readState.wait() }}s.
+        }
+      </p>
+    }
+    @if (state.success()) {
+      <p class="message success" role="status">{{ state.success() }}</p>
+    }
+    @if (!editor() && !dialog() && !confirmation()) {
+      <app-case-conflict
+        [blocked]="state.conflict()"
+        [latest]="latest()"
+        [busy]="disabled()"
+        (reload)="reload()"
+        (reviewed)="reviewed($event)"
+      />
+    }
+    @if (current.status === 'ARCHIVED') {
+      <p class="message info">
+        Caso arquivado. Definição, passos e vínculos permanecem no histórico.
+      </p>
+    }
+    <div class="table-actions">
+      @if (editable()) {
+        <button
+          class="btn"
+          type="button"
+          [disabled]="disabled() || state.conflict()"
+          (click)="edit('edit')"
+        >
+          Editar definição</button
+        ><button
+          class="btn"
+          type="button"
+          [disabled]="disabled() || state.conflict()"
+          (click)="move()"
+        >
+          Mover caso
+        </button>
+      }
+      @if (
+        can('testcase.create') &&
+        (!current.attachmentIds.length || workspace.can('attachment.read'))
+      ) {
+        <button
+          class="btn"
+          type="button"
+          [disabled]="disabled() || state.conflict()"
+          (click)="clone()"
+        >
+          Clonar caso
+        </button>
+      }
+      @if (can('testcase.archive')) {
+        @if (current.status === 'ARCHIVED') {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="disabled() || state.conflict()"
+            (click)="edit('restore')"
+          >
+            Restaurar caso
+          </button>
+        } @else {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="disabled() || state.conflict()"
+            (click)="confirm('archive')"
+          >
+            Arquivar caso
+          </button>
+        }
+      }
+    </div>
+    <dl class="profile-details">
+      <dt>Situação</dt>
+      <dd>{{ current.status === 'ARCHIVED' ? 'Arquivado' : labels.status[current.status] }}</dd>
+      <dt>Suíte</dt>
+      <dd>{{ suiteName() }}</dd>
+      <dt>Descrição</dt>
+      <dd class="preserve-text">{{ current.description || '—' }}</dd>
+      <dt>Pré-condições</dt>
+      <dd class="preserve-text">{{ current.preconditions || '—' }}</dd>
+      <dt>Pós-condições</dt>
+      <dd class="preserve-text">{{ current.postconditions || '—' }}</dd>
+      <dt>Severidade</dt>
+      <dd>{{ labels.severity[current.severity] }}</dd>
+      <dt>Prioridade</dt>
+      <dd>{{ labels.priority[current.priority] }}</dd>
+      <dt>Tipo / Camada</dt>
+      <dd>{{ labels.type[current.type] }} / {{ labels.layer[current.layer] }}</dd>
+      <dt>Comportamento</dt>
+      <dd>{{ current.behavior || '—' }}</dd>
+      <dt>Automação</dt>
+      <dd>{{ labels.automationStatus[current.automationStatus] }}</dd>
+      <dt>Versão</dt>
+      <dd>{{ current.version }}</dd>
+      <dt>Criado / Atualizado</dt>
+      <dd>
+        {{ current.createdAt | date: 'dd/MM/yyyy HH:mm' }} /
+        {{ current.updatedAt | date: 'dd/MM/yyyy HH:mm' }}
+      </dd>
+    </dl>
+    <div class="section-heading">
+      <h3>Passos</h3>
+      @if (editable()) {
+        <button
+          class="btn"
+          type="button"
+          [disabled]="disabled() || state.conflict() || current.steps.length >= 1000"
+          (click)="editStep()"
+        >
+          Adicionar passo
+        </button>
+      }
+    </div>
+    @for (step of current.steps; track step.id; let index = $index) {
+      <section class="case-step">
+        <h4>Passo {{ step.position }}</h4>
+        <dl class="profile-details">
+          <dt>Ação</dt>
+          <dd class="preserve-text">{{ step.action }}</dd>
+          <dt>Dados de teste</dt>
+          <dd class="preserve-text">{{ step.testData || '—' }}</dd>
+          <dt>Resultado esperado</dt>
+          <dd class="preserve-text">{{ step.expectedResult || '—' }}</dd>
+        </dl>
+        @if (editable()) {
+          <div class="table-actions">
+            <button
+              class="btn"
+              type="button"
+              [disabled]="disabled() || state.conflict()"
+              (click)="editStep(step)"
+            >
+              Editar passo</button
+            ><button
+              class="btn"
+              type="button"
+              [disabled]="disabled() || state.conflict()"
+              (click)="confirm('removeStep', step.id)"
+            >
+              Remover passo</button
+            ><button
+              class="btn"
+              type="button"
+              [disabled]="disabled() || state.conflict() || index === 0"
+              [attr.aria-label]="'Subir passo ' + step.position"
+              (click)="orderStep(index, -1)"
+            >
+              ↑</button
+            ><button
+              class="btn"
+              type="button"
+              [disabled]="disabled() || state.conflict() || index === current.steps.length - 1"
+              [attr.aria-label]="'Descer passo ' + step.position"
+              (click)="orderStep(index, 1)"
+            >
+              ↓
+            </button>
+          </div>
+        }
+      </section>
+    } @empty {
+      <p>Nenhum passo definido.</p>
+    }
+    <div class="section-heading">
+      <h3>Tags</h3>
+      @if (editable()) {
+        <button
+          class="btn"
+          type="button"
+          [disabled]="disabled() || state.conflict()"
+          (click)="link('tags')"
+        >
+          Vincular tag
+        </button>
+      }
+    </div>
+    @for (id of current.tagIds; track id) {
+      <div class="picker-item">
+        <span>{{ tagName(id) }}</span>
+        @if (editable()) {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="disabled() || state.conflict()"
+            (click)="confirm('tags', id)"
+          >
+            Desvincular tag
+          </button>
+        }
+      </div>
+    } @empty {
+      <p>Nenhuma tag vinculada.</p>
+    }
+    <div class="section-heading">
+      <h3>Anexos</h3>
+      @if (editable() && workspace.can('attachment.read')) {
+        <button
+          class="btn"
+          type="button"
+          [disabled]="disabled() || state.conflict()"
+          (click)="link('attachments')"
+        >
+          Vincular anexo
+        </button>
+      }
+    </div>
+    @for (id of current.attachmentIds; track id) {
+      <div class="picker-item">
+        <span>{{ attachmentName(id) }}</span>
+        <div class="table-actions">
+          @if (workspace.can('attachment.read')) {
+            <button class="btn" type="button" [disabled]="disabled()" (click)="download(id)">
+              Baixar
+            </button>
+            @if (editable()) {
+              <button
+                class="btn"
+                type="button"
+                [disabled]="disabled() || state.conflict()"
+                (click)="confirm('attachments', id)"
+              >
+                Desvincular anexo
+              </button>
+            }
+          }
+        </div>
+      </div>
+    } @empty {
+      <p>Nenhum anexo vinculado. A biblioteca é administrada no Workspace.</p>
+    }
+    <div class="section-heading">
+      <h3>Valores personalizados</h3>
+      @if (editable() && workspace.can('field.read')) {
+        <button
+          class="btn"
+          type="button"
+          [disabled]="disabled() || state.conflict()"
+          (click)="edit('fields')"
+        >
+          Substituir valores ativos
+        </button>
+      }
+    </div>
+    <dl class="profile-details">
+      @for (value of current.customFields; track value.fieldId) {
+        <dt>{{ fieldName(value.fieldId) }}</dt>
+        <dd>{{ fieldLabel(value.fieldId, value.value) }}</dd>
+      }
+    </dl>
+    @if (!current.customFields.length) {
+      <p>Nenhum valor preenchido.</p>
+    }
+  </section>
+  @if (editor(); as edit) {
+    <app-case-editor
+      [mode]="edit.mode"
+      [original]="edit.original"
+      [suites]="suites()"
+      [definitions]="activeDefinitions()"
+      [fieldsAvailable]="workspace.can('field.read')"
+      [state]="state"
+      [conflict]="state.conflict()"
+      [latest]="latest()"
+      [reading]="readState.busy() || !!readState.wait()"
+      [readError]="readState.error()"
+      (reload)="reload()"
+      (reviewed)="reviewed($event)"
+      (saved)="saveEditor($event)"
+      (closed)="editor.set(null)"
+    />
+  }
+  @if (dialog(); as edit) {
+    <app-form-dialog
+      [title]="edit.title"
+      [fields]="edit.fields"
+      [state]="state"
+      [blocked]="state.conflict()"
+      (saved)="saveDialog($event)"
+      (closed)="dialog.set(null)"
+    >
+      @if (readState.error()) {
+        <p class="message error" role="alert">{{ readState.error() }}</p>
+      }
+      <app-case-conflict
+        [blocked]="state.conflict()"
+        [latest]="latest()"
+        [busy]="disabled()"
+        (reload)="reload()"
+        (reviewed)="reviewed($event)"
+      />
+    </app-form-dialog>
+  }
+  @if (confirmation(); as confirm) {
+    <app-confirm-dialog
+      [title]="confirm.title"
+      [message]="confirm.message"
+      [state]="state"
+      [blocked]="state.conflict()"
+      (confirmed)="confirmAction()"
+      (closed)="confirmation.set(null)"
+    >
+      @if (readState.error()) {
+        <p class="message error" role="alert">{{ readState.error() }}</p>
+      }
+      <app-case-conflict
+        [blocked]="state.conflict()"
+        [latest]="latest()"
+        [busy]="disabled()"
+        (reload)="reload()"
+        (reviewed)="reviewed($event)"
+      />
+    </app-confirm-dialog>
+  }
+}

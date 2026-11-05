@@ -1,0 +1,166 @@
+<dialog
+  #dialog
+  class="window editor-dialog wide-dialog"
+  aria-labelledby="case-editor-title"
+  (cancel)="cancel($event)"
+>
+  <header class="window-header" id="case-editor-title">{{ titles[mode()] }}</header>
+  <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="state().busy()">
+    <div class="panel-body">
+      @if (state().error()) {
+        <p class="message error" role="alert">{{ state().error() }}</p>
+      }
+      @if (readError()) {
+        <p class="message error" role="alert">{{ readError() }}</p>
+      }
+      <app-case-conflict
+        [blocked]="conflict()"
+        [latest]="latest()"
+        [busy]="state().busy() || reading()"
+        (reload)="reload.emit()"
+        (reviewed)="reviewed.emit($event)"
+      />
+      <fieldset class="form-fields" [disabled]="state().busy()">
+        @if (mode() === 'create' || mode() === 'edit') {
+          <div class="field">
+            <label for="case-title">Título *</label
+            ><input id="case-title" formControlName="title" maxlength="250" /><span
+              class="field-error"
+              >{{ error('title') }}</span
+            >
+          </div>
+          @for (key of textKeys; track key) {
+            <div class="field">
+              <label [for]="'case-' + key">{{ textLabels[key] }}</label
+              ><textarea [id]="'case-' + key" [formControlName]="key" maxlength="10000"></textarea
+              ><span class="field-error">{{ error(key) }}</span>
+            </div>
+          }
+          <div class="case-enums">
+            @for (key of enumKeys; track key) {
+              <div class="field">
+                <label [for]="'case-' + key">{{ enumLabels[key] }}</label
+                ><select [id]="'case-' + key" [formControlName]="key">
+                  @for (option of options(labels[key]); track option.value) {
+                    <option [value]="option.value">{{ option.label }}</option>
+                  }</select
+                ><span class="field-error">{{ error(key) }}</span>
+              </div>
+            }
+          </div>
+          <div class="field">
+            <label for="case-behavior">Comportamento</label
+            ><input id="case-behavior" formControlName="behavior" maxlength="100" /><span
+              class="field-error"
+              >{{ error('behavior') }}</span
+            >
+          </div>
+        }
+        @if (mode() === 'create' || mode() === 'restore') {
+          @if (mode() === 'restore') {
+            <div class="field">
+              <label for="restore-status">Situação após restaurar *</label
+              ><select id="restore-status" formControlName="status">
+                @for (option of options(labels.status); track option.value) {
+                  <option [value]="option.value">{{ option.label }}</option>
+                }</select
+              ><span class="field-error">{{ error('status') }}</span>
+            </div>
+          }
+          <div class="field">
+            <label for="case-suite">Suíte de destino</label
+            ><select id="case-suite" formControlName="suiteId">
+              <option value="">Sem suíte (raiz)</option>
+              @for (suite of activeSuites(); track suite.id) {
+                <option [value]="suite.id">{{ suiteName(suite) }}</option>
+              }</select
+            ><span class="field-error">{{ error('suiteId') }}</span>
+          </div>
+        }
+        <h3>Campos personalizados</h3>
+        @if (!fieldsAvailable()) {
+          <p class="message info">
+            Sem permissão para consultar definições. Valores existentes serão preservados. Se houver
+            um obrigatório ausente, solicite acesso ao catálogo para preenchê-lo.
+          </p>
+        }
+        @if (definitions().length) {
+          <app-case-fields [form]="form" [definitions]="definitions()" />
+        } @else if (fieldsAvailable()) {
+          <p>Nenhum campo ativo definido.</p>
+        }
+        @if (mode() === 'fields') {
+          <p>
+            Esta ação substitui os valores ativos. Valores de definições arquivadas permanecem no
+            histórico.
+          </p>
+        }
+        <span class="field-error">{{ error('customFields') }}</span>
+        @if (mode() === 'create') {
+          <h3>Passos</h3>
+          <div formArrayName="steps">
+            @for (step of stepGroups(); track step; let index = $index) {
+              <fieldset [formGroupName]="index" class="case-step">
+                <legend>Passo {{ index + 1 }}</legend>
+                <div class="field">
+                  <label [for]="'action-' + index">Ação *</label
+                  ><textarea
+                    [id]="'action-' + index"
+                    formControlName="action"
+                    maxlength="10000"
+                  ></textarea
+                  ><span class="field-error">{{ stepError(index, 'action') }}</span>
+                </div>
+                <div class="field">
+                  <label [for]="'data-' + index">Dados de teste</label
+                  ><textarea
+                    [id]="'data-' + index"
+                    formControlName="testData"
+                    maxlength="10000"
+                  ></textarea
+                  ><span class="field-error">{{ stepError(index, 'testData') }}</span>
+                </div>
+                <div class="field">
+                  <label [for]="'expected-' + index">Resultado esperado</label
+                  ><textarea
+                    [id]="'expected-' + index"
+                    formControlName="expectedResult"
+                    maxlength="10000"
+                  ></textarea
+                  ><span class="field-error">{{ stepError(index, 'expectedResult') }}</span>
+                </div>
+                <button class="btn" type="button" (click)="removeStep(index)">Remover passo</button>
+              </fieldset>
+            }
+          </div>
+          <span class="field-error">{{ error('steps') }}</span>
+          <button
+            class="btn"
+            type="button"
+            [disabled]="stepGroups().length >= 1000"
+            (click)="addStep()"
+          >
+            Adicionar passo
+          </button>
+        }
+      </fieldset>
+    </div>
+    <footer class="window-footer">
+      <button class="btn" type="button" [disabled]="state().busy()" (click)="closed.emit()">
+        Cancelar</button
+      ><button
+        class="btn"
+        type="submit"
+        [disabled]="state().busy() || !!state().wait() || conflict() || reading()"
+      >
+        {{
+          state().busy()
+            ? 'Aguarde…'
+            : state().wait()
+              ? 'Aguarde ' + state().wait() + 's'
+              : 'Salvar'
+        }}
+      </button>
+    </footer>
+  </form>
+</dialog>

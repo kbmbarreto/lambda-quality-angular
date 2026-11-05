@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Lambda Quality</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+
+        body {
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+            color: #555;
+            background: #dfe8f6;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Área principal */
+        .login-wrapper {
+            width: 380px;
+        }
+
+        /* Janela no estilo Ext JS clássico */
+        .window {
+            border: 1px solid #99bbe8;
+            background: #dfe8f6;
+
+            border-radius: 3px;
+
+            box-shadow:
+                    0 2px 6px rgba(0, 0, 0, 0.25),
+                    inset 0 0 0 1px #ffffff;
+        }
+
+        /* Cabeçalho */
+        .window-header {
+            height: 34px;
+
+            display: flex;
+            align-items: center;
+
+            padding: 0 10px;
+
+            font-size: 14px;
+            font-weight: bold;
+
+            color: #15428b;
+
+            border-bottom: 1px solid #99bbe8;
+
+            background: linear-gradient(
+                    to bottom,
+                    #e6f0fb 0%,
+                    #d0e1f4 45%,
+                    #b8d2ee 100%
+            );
+        }
+
+        /* Conteúdo */
+        .window-body {
+            background: #f1f1f1;
+            padding: 22px 22px 18px 22px;
+        }
+
+        .system-name {
+            text-align: center;
+
+            color: #15428b;
+
+            font-size: 21px;
+            font-weight: bold;
+
+            margin-bottom: 6px;
+        }
+
+        .system-subtitle {
+            text-align: center;
+
+            color: #777;
+
+            font-size: 11px;
+
+            margin-bottom: 24px;
+        }
+
+        /* Formulário */
+        .field {
+            margin-bottom: 14px;
+        }
+
+        .field label {
+            display: block;
+
+            margin-bottom: 5px;
+
+            color: #555;
+
+            font-weight: bold;
+        }
+
+        .field input {
+            width: 100%;
+            height: 30px;
+
+            padding: 5px 7px;
+
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+
+            color: #333;
+
+            border: 1px solid #b5b8c8;
+
+            background: white;
+
+            outline: none;
+
+            box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.06);
+        }
+
+        .field input:focus {
+            border-color: #7eadd9;
+        }
+
+        /* Barra inferior */
+        .window-footer {
+            padding: 8px 10px;
+
+            text-align: right;
+
+            border-top: 1px solid #d0d0d0;
+
+            background: #e8e8e8;
+        }
+
+        /* Botão Ext JS */
+        .btn {
+            min-width: 85px;
+            height: 27px;
+
+            padding: 0 14px;
+
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 11px;
+
+            color: #333;
+
+            cursor: pointer;
+
+            border: 1px solid #9ebae1;
+            border-radius: 2px;
+
+            background: linear-gradient(
+                    to bottom,
+                    #ffffff 0%,
+                    #edf4fc 48%,
+                    #d6e6f7 52%,
+                    #c5dbf3 100%
+            );
+
+            box-shadow:
+                    inset 0 0 0 1px #ffffff,
+                    0 1px 1px rgba(0, 0, 0, 0.08);
+        }
+
+        .btn:hover {
+            border-color: #7aa7d6;
+
+            background: linear-gradient(
+                    to bottom,
+                    #ffffff,
+                    #dcecff
+            );
+        }
+
+        .btn:active {
+            background: linear-gradient(
+                    to bottom,
+                    #c5dbf3,
+                    #edf4fc
+            );
+        }
+
+        /* Versão */
+        .version {
+            margin-top: 8px;
+
+            text-align: center;
+
+            font-size: 10px;
+
+            color: #7185a3;
+        }
+
+        .copyright {
+            margin-top: 4px;
+
+            text-align: center;
+
+            font-size: 10px;
+
+            color: #8797ad;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="login-wrapper">
+
+    <div class="window">
+
+        <div class="window-header">
+            Lambda Quality
+        </div>
+
+        <div class="window-body">
+
+            <div class="system-name">
+                Lambda Quality
+            </div>
+
+            <div class="system-subtitle">
+                Sistema de Gestão da Qualidade de Software
+            </div>
+
+            <form>
+
+                <div class="field">
+                    <label for="usuario">Usuário:</label>
+
+                    <input
+                            id="usuario"
+                            name="usuario"
+                            type="text"
+                            autocomplete="username"
+                    >
+                </div>
+
+                <div class="field">
+                    <label for="senha">Senha:</label>
+
+                    <input
+                            id="senha"
+                            name="senha"
+                            type="password"
+                            autocomplete="current-password"
+                    >
+                </div>
+
+            </form>
+
+        </div>
+
+        <div class="window-footer">
+            <button class="btn" type="submit">
+                Entrar
+            </button>
+        </div>
+
+    </div>
+
+    <div class="version">
+        Lambda Quality — Versão 1.0.0
+    </div>
+
+    <div class="copyright">
+        Lambda Team
+    </div>
+
+</div>
+
+</body>
+</html>

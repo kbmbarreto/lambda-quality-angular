@@ -1,0 +1,170 @@
+<section class="detail-card" aria-label="Ações de melhoria vinculadas à meta">
+  <div class="section-heading">
+    <div>
+      <h3>Ações de melhoria desta meta</h3>
+      <p>Vincule ações existentes para acompanhar o plano de melhoria.</p>
+    </div>
+    @if (canManage() && goal().status !== 'CANCELLED') {
+      <button class="btn" type="button" [disabled]="!!selection()" (click)="choose()">
+        Vincular ação existente
+      </button>
+    }
+  </div>
+  @if (success()) {
+    <p class="message success" role="status">{{ success() }}</p>
+  }
+  @if (linked.state.error()) {
+    <p class="message error" role="alert">{{ linked.state.error() }}</p>
+  }
+  <button
+    class="btn"
+    type="button"
+    [disabled]="busy() || linked.state.busy() || !!linked.state.wait()"
+    (click)="linked.load()"
+  >
+    Atualizar ações{{ linked.state.wait() ? ' (' + linked.state.wait() + 's)' : '' }}
+  </button>
+  @if (linked.state.busy()) {
+    <p role="status">Consultando ações vinculadas…</p>
+  }
+  @for (action of linked.rows(); track action.id) {
+    <div class="picker-item">
+      <div>
+        <strong>{{ action.title }}</strong
+        ><br /><span>{{ labels[action.status] }}</span>
+      </div>
+      <div class="row-actions">
+        <button class="btn" type="button" [disabled]="busy()" (click)="opened.emit(action.id)">
+          Abrir ação
+        </button>
+        @if (canManage() && editable(action)) {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="!!selection()"
+            (click)="select(action, true)"
+          >
+            Desvincular
+          </button>
+        }
+      </div>
+    </div>
+  } @empty {
+    @if (!linked.state.busy() && !linked.state.error()) {
+      <p>Nenhuma ação vinculada a esta meta.</p>
+    }
+  }
+  <app-pagination
+    [pagination]="linked.pagination()"
+    [busy]="busy() || linked.state.busy() || !!linked.state.wait()"
+    (change)="linked.page($event)"
+  />
+  @if (picker()) {
+    <section class="detail-card" aria-label="Selecionar ação de melhoria existente">
+      <div class="section-heading">
+        <h3>Selecionar ação existente</h3>
+        <button class="btn" type="button" [disabled]="busy()" (click)="closePicker()">
+          Fechar seleção
+        </button>
+      </div>
+      <p>
+        Busque nas ações deste Workspace. Somente ações abertas ou em andamento podem ser
+        vinculadas.
+      </p>
+      <app-list-tools
+        label="ações existentes"
+        [statuses]="statuses"
+        [busy]="!!selection() || candidates.state.busy() || !!candidates.state.wait()"
+        (search)="candidates.search($event)"
+        (refresh)="candidates.load()"
+      />
+      @if (candidates.state.error()) {
+        <p class="message error" role="alert">
+          {{ candidates.state.error() }}
+          @if (candidates.state.wait()) {
+            Aguarde {{ candidates.state.wait() }}s.
+          }
+        </p>
+      }
+      @if (candidates.state.busy()) {
+        <p role="status">Buscando ações…</p>
+      }
+      @for (action of candidates.rows(); track action.id) {
+        <div class="picker-item">
+          <div>
+            <strong>{{ action.title }}</strong
+            ><br /><span
+              >{{ labels[action.status] }} ·
+              {{
+                action.goalId === goal().id
+                  ? 'Já vinculada a esta meta'
+                  : action.goalId
+                    ? 'Vinculada a outra meta'
+                    : 'Sem meta vinculada'
+              }}</span
+            >
+          </div>
+          <button
+            class="btn"
+            type="button"
+            [disabled]="
+              !canManage() ||
+              !!selection() ||
+              !editable(action) ||
+              action.goalId === goal().id ||
+              goal().status === 'CANCELLED'
+            "
+            (click)="select(action)"
+          >
+            Selecionar
+          </button>
+        </div>
+      } @empty {
+        @if (!candidates.state.busy() && !candidates.state.error()) {
+          <p>Nenhuma ação encontrada. Ajuste a busca ou a situação.</p>
+        }
+      }
+      <app-pagination
+        [pagination]="candidates.pagination()"
+        [busy]="!!selection() || candidates.state.busy() || !!candidates.state.wait()"
+        (change)="candidates.page($event)"
+      />
+    </section>
+  }
+</section>
+@if (selection(); as selected) {
+  <app-confirm-dialog
+    [title]="removing() ? 'Desvincular ação da meta' : 'Vincular ação à meta'"
+    [message]="message()"
+    [state]="selected.state"
+    [blocked]="!canConfirm()"
+    (confirmed)="confirm()"
+    (closed)="closeSelection()"
+  >
+    @if (selected.read.busy()) {
+      <p role="status">Consultando a versão atual da ação…</p>
+    }
+    @if (!selected.ready() && !selected.state.blocked() && selected.read.error()) {
+      <button
+        class="btn"
+        type="button"
+        [disabled]="selected.read.busy() || !!selected.read.wait()"
+        (click)="selected.reload()"
+      >
+        Consultar ação novamente{{ selected.read.wait() ? ' (' + selected.read.wait() + 's)' : '' }}
+      </button>
+    }
+    @if (selected.ready() && !editable(action(selected))) {
+      <p class="message info">Esta ação foi concluída ou cancelada e não pode ser alterada.</p>
+    }
+    @if (selected.view().project?.status === 'ARCHIVED') {
+      <p class="message info">O projeto da ação está arquivado. O vínculo não pode ser alterado.</p>
+    }
+    @if (removing() && action(selected).goalId && action(selected).goalId !== goal().id) {
+      <p class="message info">
+        A ação já foi transferida para outra meta. Atualize a lista para consultar o vínculo atual.
+      </p>
+    }
+    <app-governance-conflict [session]="selected" />
+  </app-confirm-dialog>
+}

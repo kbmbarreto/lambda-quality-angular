@@ -1,0 +1,235 @@
+<section class="detail-card" aria-label="Detalhes do defeito">
+  <div class="section-heading">
+    <h2>{{ item().humanId }} · {{ item().title }}</h2>
+    <button class="btn" type="button" [disabled]="state.busy()" (click)="closed.emit()">
+      Voltar à lista
+    </button>
+  </div>
+  <app-defect-view [item]="item()" />
+  @if (state.error() && !editor() && !confirm()) {
+    <p class="message error" role="alert">
+      {{ state.error() }}
+      @if (state.wait()) {
+        Aguarde {{ state.wait() }}s.
+      }
+    </p>
+  }
+  @if (state.success()) {
+    <p class="message success" role="status">{{ state.success() }}</p>
+  }
+  @if (!editor() && !confirm()) {
+    <app-defect-conflict
+      [blocked]="state.blocked()"
+      [busy]="read.busy()"
+      [wait]="read.wait()"
+      [error]="read.error()"
+      [latest]="latest()"
+      (reload)="reload()"
+      (reviewed)="review()"
+    />
+  }
+  <div class="row-actions">
+    <button
+      class="btn"
+      type="button"
+      [disabled]="state.busy() || read.busy() || !!read.wait()"
+      (click)="reload()"
+    >
+      Recarregar dados
+    </button>
+    @if (canManage()) {
+      <button class="btn" type="button" [disabled]="locked()" (click)="updateActivity()">
+        Atualizar defeito
+      </button>
+      <button class="btn" type="button" [disabled]="locked()" (click)="edit()">
+        Editar defeito</button
+      ><button class="btn" type="button" [disabled]="locked()" (click)="external()">
+        {{ item().externalSystem ? 'Alterar referência externa' : 'Adicionar referência externa' }}
+      </button>
+      @if (item().externalSystem) {
+        <button
+          class="btn"
+          type="button"
+          [disabled]="locked()"
+          (click)="requestRemoval('external')"
+        >
+          Remover referência externa
+        </button>
+      }
+    }
+    @if (item().testRunId && item().testRunCaseId && canReadRuns()) {
+      <a
+        class="btn button-link"
+        [routerLink]="[
+          '/workspaces',
+          item().workspaceId,
+          'projects',
+          item().projectId,
+          'execution',
+        ]"
+        [queryParams]="{ runId: item().testRunId, runCaseId: item().testRunCaseId }"
+        >Abrir caso de origem</a
+      >
+    }
+  </div>
+  @if (item().testRunCaseId) {
+    <p class="message info">
+      A origem é permanente. O resultado do caso pode ter mudado depois da criação do defeito.
+    </p>
+  }
+  <app-defect-history [item]="item()" (available)="historyAvailable($event)" />
+  <div class="section-heading">
+    <h3>Anexos privados ({{ item().attachmentIds.length }})</h3>
+    @if (canManage()) {
+      <div class="row-actions">
+        @if (canReadFiles()) {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="locked() || item().attachmentIds.length >= 100"
+            (click)="linking.set(!linking())"
+          >
+            {{ linking() ? 'Fechar biblioteca' : 'Vincular anexo' }}
+          </button>
+        }
+        <button class="btn" type="button" [disabled]="locked()" (click)="removeById()">
+          Remover vínculo por ID
+        </button>
+      </div>
+    }
+  </div>
+  @if (!canReadFiles()) {
+    <p class="message info">
+      Consultar nomes e baixar arquivos exige acesso à biblioteca de anexos. Você pode remover
+      vínculos se tiver permissão para gerenciar defeitos.
+    </p>
+  }
+  @if (filesState.error()) {
+    <p class="message error" role="alert">
+      {{ filesState.error() }}
+      @if (filesState.wait()) {
+        Aguarde {{ filesState.wait() }}s.
+      }
+    </p>
+    <button
+      class="btn"
+      type="button"
+      [disabled]="filesState.busy() || !!filesState.wait()"
+      (click)="loadFiles(true)"
+    >
+      Consultar anexos novamente
+    </button>
+  }
+  @if (filesState.busy()) {
+    <p role="status">Consultando arquivos privados…</p>
+  }
+  @for (id of visibleFileIds(); track id) {
+    <div class="picker-item">
+      <span class="preserve-text">{{ fileName(id) }}</span>
+      <div class="row-actions">
+        @if (canReadFiles()) {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="filesState.busy() || !!filesState.wait()"
+            (click)="download(id)"
+          >
+            Baixar anexo
+          </button>
+        }
+        @if (canManage()) {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="locked()"
+            (click)="requestRemoval('attachment', id)"
+          >
+            Remover vínculo
+          </button>
+        }
+      </div>
+    </div>
+  } @empty {
+    <p>Nenhum anexo ativo vinculado.</p>
+  }
+  <app-pagination
+    [pagination]="pagination()"
+    [busy]="locked() || filesState.busy()"
+    (change)="pageFiles($event)"
+  />
+  <p>
+    Remover o vínculo não apaga o arquivo da biblioteca. Arquivos excluídos da biblioteca deixam de
+    aparecer nesta lista.
+  </p>
+  @if (linking() && canManage() && canReadFiles()) {
+    <app-defect-attachment-selection
+      [workspaceId]="item().workspaceId"
+      [single]="true"
+      [selected]="item().attachmentIds"
+      [blocked]="locked()"
+      (added)="attach($event)"
+    />
+  }
+  <p><a [routerLink]="['/workspaces', item().workspaceId]">Abrir biblioteca do Workspace</a></p>
+</section>
+@if (editor(); as dialog) {
+  <app-form-dialog
+    [title]="dialog.title"
+    [fields]="dialog.fields"
+    [state]="state"
+    [hint]="dialog.hint"
+    [blocked]="
+      locked() ||
+      !canManage() ||
+      (dialog.mode === 'details' && (!!environmentRead.error() || !!environmentRead.wait()))
+    "
+    [loading]="dialog.mode === 'details' && environmentRead.busy()"
+    [wide]="true"
+    (saved)="save($event)"
+    (closed)="editor.set(null)"
+  >
+    @if (environmentRead.error() && dialog.mode === 'details') {
+      <p class="message error" role="alert">{{ environmentRead.error() }}</p>
+      <button
+        class="btn"
+        type="button"
+        [disabled]="environmentRead.busy() || !!environmentRead.wait()"
+        (click)="loadEnvironments()"
+      >
+        Consultar ambientes novamente
+      </button>
+    }
+    <app-defect-conflict
+      [blocked]="state.blocked()"
+      [busy]="read.busy()"
+      [wait]="read.wait()"
+      [error]="read.error()"
+      [latest]="latest()"
+      (reload)="reload()"
+      (reviewed)="review()"
+  /></app-form-dialog>
+}
+@if (confirm(); as confirmation) {
+  <app-confirm-dialog
+    [title]="
+      confirmation.mode === 'external' ? 'Remover referência externa' : 'Remover vínculo de anexo'
+    "
+    [message]="
+      confirmation.mode === 'external'
+        ? 'Remover a referência manual deste defeito? A issue externa permanece inalterada.'
+        : 'Remover o vínculo deste anexo? O arquivo permanece na biblioteca privada.'
+    "
+    [state]="state"
+    [blocked]="locked() || !canManage()"
+    (confirmed)="remove()"
+    (closed)="confirm.set(null)"
+    ><app-defect-conflict
+      [blocked]="state.blocked()"
+      [busy]="read.busy()"
+      [wait]="read.wait()"
+      [error]="read.error()"
+      [latest]="latest()"
+      (reload)="reload()"
+      (reviewed)="review()"
+  /></app-confirm-dialog>
+}

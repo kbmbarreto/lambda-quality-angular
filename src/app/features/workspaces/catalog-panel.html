@@ -1,0 +1,163 @@
+<div class="section-heading">
+  <h2>{{ title() }}</h2>
+  @if (canManage()) {
+    <button
+      class="btn"
+      type="button"
+      [disabled]="operation.busy() || !!operation.wait()"
+      (click)="open()"
+    >
+      Criar
+    </button>
+  }
+</div>
+@if (kind() === 'custom-fields') {
+  <p>
+    Definições para futuros casos de teste. Valores e vínculos serão disponibilizados com esse
+    módulo.
+  </p>
+}
+@if (canRead()) {
+  <app-list-tools
+    [label]="title()"
+    [busy]="list.state.busy() || !!list.state.wait()"
+    [sorts]="sorts()"
+    [statuses]="statuses()"
+    [defaultStatus]="kind() === 'custom-fields' ? 'ACTIVE' : ''"
+    (search)="list.search($event)"
+    (refresh)="list.load()"
+  />
+} @else {
+  <p class="message info">
+    Você pode criar registros, mas não possui permissão para consultar este catálogo.
+  </p>
+}
+@if (list.state.error() || operation.error()) {
+  <p class="message error" role="alert">
+    {{ list.state.error() || operation.error() }}
+    @if (list.state.wait() || operation.wait()) {
+      Aguarde {{ list.state.wait() || operation.wait() }}s.
+    }
+  </p>
+}
+@if (operation.success()) {
+  <p class="message success" role="status">{{ operation.success() }}</p>
+}
+@if (list.state.busy()) {
+  <p role="status">Carregando…</p>
+}
+@if (canRead() && !list.state.busy() && !list.state.error() && !list.rows().length) {
+  <p class="empty-state">Nenhum registro encontrado.</p>
+}
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Nome</th>
+        <th>Descrição</th>
+        <th>Detalhes</th>
+        <th>Criado em</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (item of list.rows(); track item.id) {
+        <tr>
+          <td>{{ item.name }}</td>
+          <td>{{ description(item) }}</td>
+          <td>{{ summary(item) }}</td>
+          <td>{{ item.createdAt | date: 'dd/MM/yyyy' }}</td>
+          <td class="row-actions">
+            <button class="btn" type="button" (click)="view(item)" [disabled]="operation.busy()">
+              Consultar
+            </button>
+            @if (kind() === 'groups') {
+              <button class="btn" type="button" (click)="manageGroup(item)">
+                Participantes e papéis
+              </button>
+            }
+            @if (editable(item)) {
+              <button class="btn" type="button" (click)="open(item)" [disabled]="operation.busy()">
+                Editar</button
+              ><button
+                class="btn"
+                type="button"
+                (click)="requestRemove(item)"
+                [disabled]="operation.busy()"
+              >
+                {{ kind() === 'custom-fields' ? 'Arquivar' : 'Excluir' }}
+              </button>
+            }
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
+<app-pagination
+  [pagination]="list.pagination()"
+  [busy]="list.state.busy()"
+  (change)="list.page($event)"
+/>
+@if (details(); as item) {
+  <section class="detail-card">
+    <div class="section-heading">
+      <h3>{{ item.name }}</h3>
+      <button class="link-button" type="button" (click)="details.set(null)">Fechar detalhes</button>
+    </div>
+    <p>{{ description(item) }}</p>
+    <p>{{ summary(item) }}</p>
+    @if (detailsRole(); as role) {
+      <h4>Permissões concedidas</h4>
+      <ul>
+        @for (code of role.permissionCodes; track code) {
+          <li>{{ code }}</li>
+        }
+      </ul>
+      @if (!role.permissionCodes.length) {
+        <p>Este papel não concede permissões.</p>
+      }
+    }
+    @if (detailsField(); as field) {
+      <p>
+        Alvo: Casos de teste · {{ field.required ? 'Obrigatório' : 'Opcional' }} · Posição:
+        {{ field.position }}
+      </p>
+      @for (option of field.options; track option.id) {
+        <span class="badge">{{ option.label }}</span>
+      }
+    }
+  </section>
+}
+@if (editor(); as current) {
+  <app-form-dialog
+    [title]="current.title"
+    [fields]="current.fields"
+    [state]="operation"
+    (saved)="save($event)"
+    (closed)="editor.set(null)"
+  />
+}
+@if (removing(); as item) {
+  <app-confirm-dialog
+    [title]="kind() === 'custom-fields' ? 'Arquivar campo' : 'Excluir registro'"
+    [message]="
+      kind() === 'custom-fields'
+        ? 'Arquivar ' +
+          item.name +
+          '? A chave continuará reservada e não há restauração nesta etapa.'
+        : 'Excluir ' + item.name + '? As concessões deste registro deixarão de valer.'
+    "
+    [state]="operation"
+    (confirmed)="remove()"
+    (closed)="removing.set(null)"
+  />
+}
+@if (group(); as selectedGroup) {
+  <app-group-access
+    [workspace]="workspace()"
+    [group]="selectedGroup"
+    (closed)="group.set(null)"
+    (changed)="changed.emit()"
+  />
+}

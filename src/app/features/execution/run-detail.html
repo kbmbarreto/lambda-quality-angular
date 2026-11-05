@@ -1,0 +1,429 @@
+@if (importing()) {
+  <app-test-report-import
+    [project]="project()"
+    [initial]="run()"
+    (updated)="reportUpdated($event)"
+    (settled)="reportSettled()"
+    (closed)="importing.set(false); reload()"
+  />
+}
+<section
+  class="detail-card"
+  [class.runner-focus-mode]="focusMode()"
+  aria-label="Detalhes da execução"
+>
+  <div class="section-heading">
+    <h2>
+      {{ run().name
+      }}<small class="runner-heading-status"
+        >{{ runs[run().status] }} · {{ run().environmentSnapshot?.name ?? 'Sem ambiente' }} · Versão
+        {{ run().version }}</small
+      >
+    </h2>
+    <div class="row-actions">
+      <button class="btn" [attr.aria-pressed]="focusMode()" (click)="focusMode.set(!focusMode())">
+        {{ focusMode() ? 'Sair do modo foco' : 'Modo foco' }}
+      </button>
+      @if (executable() && run().testPlanId) {
+        <button class="btn" [disabled]="locked() || importing()" (click)="importing.set(true)">
+          Importar relatório
+        </button>
+      }
+      <button
+        class="btn"
+        [disabled]="state.busy() || read.busy() || importing()"
+        (click)="closed.emit()"
+      >
+        Voltar à lista
+      </button>
+    </div>
+  </div>
+  <p>
+    <strong>{{ runs[run().status] }}</strong> · Versão {{ run().version }} · Execução manual
+  </p>
+  <details class="runner-context">
+    <summary>
+      Contexto e datas da execução · {{ run().environmentSnapshot?.name ?? 'Sem ambiente' }}
+    </summary>
+    <dl class="profile-details">
+      <dt>Plano</dt>
+      <dd>{{ run().planNameSnapshot ?? 'Execução avulsa' }}</dd>
+      <dt>Marco preservado</dt>
+      <dd class="preserve-text">
+        {{ run().milestoneSnapshot?.name ?? 'Sem marco' }}
+        @if (run().milestoneSnapshot?.description) {
+          · {{ run().milestoneSnapshot?.description }}
+        }
+      </dd>
+      <dt>Ambiente preservado</dt>
+      <dd class="preserve-text">
+        {{ run().environmentSnapshot?.name ?? 'Sem ambiente' }}
+        @if (run().environmentSnapshot?.description) {
+          · {{ run().environmentSnapshot?.description }}
+        }
+      </dd>
+      <dt>Criada por / em</dt>
+      <dd>{{ run().createdBy }} / {{ run().createdAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
+      <dt>Iniciada / Finalizada</dt>
+      <dd>
+        {{ (run().startedAt | date: 'dd/MM/yyyy HH:mm') ?? '—' }} /
+        {{ (run().finishedAt | date: 'dd/MM/yyyy HH:mm') ?? '—' }}
+      </dd>
+    </dl>
+  </details>
+  <div class="execution-summary" aria-label="Resumo dos resultados">
+    <span
+      >Total <strong>{{ run().summary.total }}</strong></span
+    ><span
+      >Não testados <strong>{{ run().summary.notTested }}</strong></span
+    ><span
+      >Passaram <strong>{{ run().summary.passed }}</strong></span
+    ><span
+      >Falharam <strong>{{ run().summary.failed }}</strong></span
+    ><span
+      >Bloqueados <strong>{{ run().summary.blocked }}</strong></span
+    ><span
+      >Ignorados <strong>{{ run().summary.skipped }}</strong></span
+    >
+  </div>
+  @if (read.error()) {
+    <p class="message error" role="alert">
+      {{ read.error() }}
+      @if (read.wait()) {
+        Aguarde {{ read.wait() }}s.
+      }
+    </p>
+  }
+  @if (state.error() && !editor() && !action()) {
+    <p class="message error" role="alert">
+      {{ state.error() }}
+      @if (state.wait()) {
+        Aguarde {{ state.wait() }}s.
+      }
+    </p>
+  }
+  @if (state.success()) {
+    <p class="message success" role="status">{{ state.success() }}</p>
+  }
+  @if (state.busy() || read.busy()) {
+    <p role="status">Confirmando estado e atualizando resultados…</p>
+  }
+  @if (!editor() && !action()) {
+    <app-execution-conflict
+      [blocked]="state.blocked()"
+      [busy]="read.busy()"
+      [wait]="read.wait()"
+      [run]="latest()?.run ?? null"
+      [item]="latest()?.selected ?? null"
+      [comments]="latestComments().length ? latestComments() : (latest()?.comments?.data ?? [])"
+      (reload)="reload()"
+      (reviewed)="review()"
+    />
+  }
+  <div class="row-actions">
+    <button
+      class="btn"
+      [disabled]="state.busy() || read.busy() || !!read.wait()"
+      (click)="reload()"
+    >
+      Atualizar execução
+    </button>
+    @if (can() && run().status === 'CREATED') {
+      <button class="btn" [disabled]="locked()" (click)="action.set('start')">
+        Iniciar execução
+      </button>
+    }
+    @if (executable()) {
+      <button
+        class="btn"
+        [disabled]="locked() || run().summary.notTested > 0"
+        (click)="action.set('complete')"
+      >
+        Concluir execução</button
+      ><button class="btn" [disabled]="locked()" (click)="comment()">Comentar execução</button>
+    }
+    @if (can('testrun.manage') && (run().status === 'CREATED' || run().status === 'IN_PROGRESS')) {
+      <button class="btn" [disabled]="locked()" (click)="action.set('abort')">
+        Abortar execução
+      </button>
+    }
+  </div>
+  @if (run().status === 'COMPLETED' || run().status === 'ABORTED') {
+    <p class="message info">
+      Execução encerrada. Resultados e histórico estão disponíveis para consulta.
+    </p>
+  }
+  @if (run().status === 'IN_PROGRESS' && run().summary.notTested > 0) {
+    <p>
+      Confirme o resultado dos {{ run().summary.notTested }} casos não testados para concluir a
+      execução.
+    </p>
+  }
+  <div class="runner-progress-header">
+    <span
+      >{{ run().summary.total - run().summary.notTested }}/{{ run().summary.total }} casos com
+      resultado final</span
+    >
+    <div
+      class="dashboard-progress"
+      role="progressbar"
+      aria-label="Progresso da execução"
+      [attr.aria-valuenow]="executionPercent()"
+      aria-valuemin="0"
+      aria-valuemax="100"
+    >
+      <span [style.width.%]="executionPercent()"></span>
+    </div>
+  </div>
+  <div class="test-runner">
+    <aside class="runner-queue" aria-labelledby="runner-queue-title">
+      <h3 id="runner-queue-title">Casos da execução</h3>
+      <app-list-tools
+        label="casos da execução"
+        [statuses]="statuses"
+        [sorts]="caseSorts"
+        [busy]="locked()"
+        (search)="searchCases($event)"
+        (refresh)="reload()"
+      />
+      @if (cases(); as page) {
+        <ol class="runner-case-list">
+          @for (item of page.data; track item.id) {
+            <li>
+              <button
+                type="button"
+                class="runner-case"
+                [class.selected]="selected()?.id === item.id"
+                [attr.aria-current]="selected()?.id === item.id ? 'true' : null"
+                [disabled]="locked()"
+                (click)="open(item)"
+              >
+                <span class="runner-case-id"
+                  >{{ item.position }}. {{ item.humanIdSnapshot }}
+                  <span class="result-badge" [attr.data-result]="item.result">{{
+                    results[item.result]
+                  }}</span></span
+                >
+                <span>{{ item.titleSnapshot }}</span>
+              </button>
+            </li>
+          } @empty {
+            <li class="dashboard-empty">Nenhum caso encontrado para estes filtros.</li>
+          }
+        </ol>
+        <app-pagination
+          [pagination]="page.meta.pagination"
+          [busy]="locked()"
+          (change)="pageCases($event)"
+        />
+      }
+    </aside>
+    <div class="runner-workspace" [attr.aria-busy]="locked()">
+      @if (selected(); as item) {
+        <article class="runner-selected-case">
+          <div class="section-heading runner-case-toolbar">
+            <span class="result-badge" [attr.data-result]="item.result">{{
+              results[item.result]
+            }}</span>
+            <div class="row-actions">
+              @if (executable()) {
+                <button class="btn" [disabled]="locked()" (click)="comment(true)">
+                  Comentar caso
+                </button>
+              }
+              <button class="btn" [disabled]="locked()" (click)="closeCase()">Fechar caso</button>
+              @if (project().permissions.includes('defect.read') && !locked()) {
+                @if (item.result === 'FAILED' && canCreateDefect()) {
+                  <a
+                    class="btn button-link"
+                    [routerLink]="[
+                      '/workspaces',
+                      project().workspaceId,
+                      'projects',
+                      project().id,
+                      'defects',
+                    ]"
+                    [queryParams]="{
+                      fromRunId: run().id,
+                      fromRunCaseId: item.id,
+                      testRunCaseId: item.id,
+                    }"
+                    >Criar defeito desta falha</a
+                  >
+                }
+                <a
+                  class="btn button-link"
+                  [routerLink]="[
+                    '/workspaces',
+                    project().workspaceId,
+                    'projects',
+                    project().id,
+                    'defects',
+                  ]"
+                  [queryParams]="{ testRunCaseId: item.id }"
+                  >Ver defeitos deste caso</a
+                >
+              }
+            </div>
+          </div>
+          <div class="runner-case-body" #caseBody>
+            <app-run-snapshot
+              [item]="item"
+              [editable]="executable()"
+              [busy]="locked()"
+              (stepResult)="editResult($event)"
+              (comment)="comment(true, $event)"
+              (quickStepResult)="quickResult($event.result, $event.step)"
+            />
+          </div>
+          <footer class="runner-result-bar">
+            <div>
+              <strong>Resultado final do caso</strong>
+              @if (executable()) {
+                <label class="runner-advance"
+                  ><input
+                    type="checkbox"
+                    [checked]="advanceAfterResult()"
+                    (change)="advanceAfterResult.set($any($event.target).checked)"
+                    [disabled]="locked()"
+                  />
+                  Avançar após confirmar</label
+                >
+              }
+            </div>
+            <div class="row-actions">
+              @if (executable()) {
+                @for (result of quickResults; track result) {
+                  <button
+                    type="button"
+                    class="btn result-button"
+                    [attr.data-result]="result"
+                    [disabled]="locked() || (result === 'PASSED' && !canPass(item))"
+                    [attr.title]="
+                      result === 'PASSED' && !canPass(item)
+                        ? 'Conclua ou ignore todos os passos antes de passar o caso'
+                        : null
+                    "
+                    (click)="quickResult(result)"
+                  >
+                    {{ results[result] }}
+                  </button>
+                }
+                <button class="btn" [disabled]="locked()" (click)="editResult()">
+                  Resultado com comentário
+                </button>
+              }
+              <button class="btn" [disabled]="locked()" (click)="nextCase()">Próximo caso →</button>
+            </div>
+            @if (executable() && !canPass(item)) {
+              <small>Para passar o caso, confirme todos os passos como Passou ou Ignorado.</small>
+            }
+          </footer>
+        </article>
+      } @else {
+        <p class="dashboard-empty">
+          Selecione um caso na lista para visualizar os passos e registrar o resultado.
+        </p>
+      }
+    </div>
+  </div>
+  <details class="runner-history">
+    <summary>
+      Histórico de comentários ({{ comments()?.meta?.pagination?.totalItems ?? 0 }})
+    </summary>
+    <h3>Histórico de comentários</h3>
+    <p>Registros imutáveis, separados do comentário de cada resultado.</p>
+    <app-list-tools
+      label="comentários da execução"
+      [busy]="locked()"
+      (search)="searchComments($event)"
+      (refresh)="reload()"
+    />
+    @if (comments(); as page) {
+      @for (item of page.data; track item.id) {
+        <article class="case-step">
+          <p class="preserve-text">{{ item.text }}</p>
+          <small
+            >{{ item.createdBy }} · {{ item.createdAt | date: 'dd/MM/yyyy HH:mm:ss' }} ·
+            {{
+              item.runStepId
+                ? 'Passo: ' + item.runStepId
+                : item.runCaseId
+                  ? 'Caso: ' + item.runCaseId
+                  : 'Execução'
+            }}</small
+          >
+        </article>
+      } @empty {
+        <p>Nenhum comentário encontrado.</p>
+      }
+      <app-pagination
+        [pagination]="page.meta.pagination"
+        [busy]="locked()"
+        (change)="pageComments($event)"
+      />
+    }
+  </details>
+</section>
+@if (editor(); as current) {
+  <app-form-dialog
+    [title]="current.title"
+    [wide]="true"
+    [fields]="current.fields"
+    [state]="state"
+    [blocked]="locked() || !executable()"
+    [hint]="
+      current.kind === 'comment'
+        ? 'Este registro será adicionado ao histórico com autor e data e não poderá ser editado ou removido. Após uma resposta incerta, consulte os comentários antes de enviar novamente.'
+        : current.kind === 'step'
+          ? 'Salvar um passo devolve o caso para Não testado. Confirme o caso ao terminar. Texto vazio limpa o comentário e o resultado obtido.'
+          : 'Confirme o resultado final do caso. Para passar, todos os passos devem passar ou ser ignorados. Texto vazio limpa o comentário do resultado.'
+    "
+    (saved)="save($event)"
+    (closed)="editor.set(null)"
+    ><app-execution-conflict
+      [blocked]="state.blocked()"
+      [busy]="read.busy()"
+      [wait]="read.wait()"
+      [run]="latest()?.run ?? null"
+      [item]="latest()?.selected ?? null"
+      [comments]="latestComments().length ? latestComments() : (latest()?.comments?.data ?? [])"
+      (reload)="reload()"
+      (reviewed)="review()"
+    />
+    @if (read.error()) {
+      <p class="message error" role="alert">{{ read.error() }}</p>
+    }
+  </app-form-dialog>
+}
+@if (action(); as command) {
+  <app-confirm-dialog
+    [title]="
+      command === 'start'
+        ? 'Iniciar execução'
+        : command === 'complete'
+          ? 'Concluir execução'
+          : 'Abortar execução'
+    "
+    [message]="
+      command === 'start'
+        ? 'A execução será iniciada para registrar resultados e comentários.'
+        : command === 'complete'
+          ? 'Todos os casos devem ter resultado final. A execução ficará somente para consulta.'
+          : 'Os resultados parciais serão preservados. A execução não poderá ser reaberta.'
+    "
+    [state]="state"
+    [blocked]="locked()"
+    (confirmed)="transition()"
+    (closed)="action.set(null)"
+    ><app-execution-conflict
+      [blocked]="state.blocked()"
+      [busy]="read.busy()"
+      [wait]="read.wait()"
+      [run]="latest()?.run ?? null"
+      [item]="latest()?.selected ?? null"
+      [comments]="latestComments().length ? latestComments() : (latest()?.comments?.data ?? [])"
+      (reload)="reload()"
+      (reviewed)="review()"
+  /></app-confirm-dialog>
+}
